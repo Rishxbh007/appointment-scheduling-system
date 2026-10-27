@@ -1,4 +1,4 @@
-// Auth server actions: register, sign in, sign out.
+// Auth server actions: register, sign in, sign out, OAuth role choice.
 //
 // Registration creates the user row plus exactly one profile row
 // (patient OR doctor, decided by role — the ER diagram's 1:1 rule).
@@ -10,15 +10,10 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
 import { db, ensureDb } from "@/lib/db";
-import {
-  users,
-  patients,
-  doctors,
-  specializations,
-  slots,
-} from "@/lib/db/schema";
+import { users } from "@/lib/db/schema";
 import {
   hashPassword,
   comparePassword,
@@ -26,8 +21,17 @@ import {
   setSessionCookie,
   clearSessionCookie,
 } from "@/lib/auth";
-import { registerSchema, loginSchema } from "@/lib/validation";
-import { defaultScheduleSlots } from "@/lib/services/schedule";
+import {
+  registerSchema,
+  loginSchema,
+  oauthRoleSchema,
+} from "@/lib/validation";
+import { createAccountWithProfile } from "@/lib/services/accounts";
+import {
+  verifyPendingOAuth,
+  providerLabel,
+  randomUnusablePasswordHash,
+} from "@/lib/oauth";
 
 export type ActionState = { error?: string };
 
@@ -60,45 +64,18 @@ export async function registerAction(
   }
 
   const passwordHash = await hashPassword(data.password);
-  const [user] = await db
-    .insert(users)
-    .values({
-      name: data.name,
-      email: data.email,
-      phone: data.phone,
-      passwordHash,
-      role: data.role,
-      authProvider: "Email",
-      isVerified: true,
-    })
-    .returning();
-
-  if (data.role === "Patient") {
-    await db.insert(patients).values({ userId: user.userId });
-  } else {
-    const [doctor] = await db
-      .insert(doctors)
-      .values({
-        userId: user.userId,
-        qualification: data.qualification ?? null,
-        experienceYears: data.experienceYears ?? null,
-        consultationFee:
-          data.consultationFee !== undefined
-            ? String(data.consultationFee)
-            : null,
-        // Demo simplification (see file header): approved at once.
-        isApproved: true,
-      })
-      .returning();
-    if (data.specialization) {
-      await db.insert(specializations).values({
-        doctorId: doctor.doctorId,
-        name: data.specialization,
-      });
-    }
-    const schedule = defaultScheduleSlots(doctor.doctorId);
-    if (schedule.length > 0) await db.insert(slots).values(schedule);
-  }
+  const user = await createAccountWithProfile({
+    name: data.name,
+    email: data.email,
+    phone: data.phone,
+    passwordHash,
+    role: data.role,
+    authProvider: "Email",
+    qualification: data.qualification,
+    experienceYears: data.experienceYears,
+    consultationFee: data.consultationFee,
+    specialization: data.specialization,
+  });
 
   await setSessionCookie(signSession(user.userId, data.role));
   redirect("/dashboard");
@@ -118,6 +95,13 @@ export async function loginAction(
     .from(users)
     .where(eq(users.email, parsed.data.email));
   if (!user) return { error: "Invalid email or password." };
+  // OAuth accounts have no usable password (see lib/oauth.ts). Tell
+  // the person which sign-in to use instead of a generic failure.
+  if (user.authProvider !== "Email") {
+    return {
+      error: `This account was created with ${user.authProvider}. Please sign in with ${user.authProvider} instead.`,
+    };
+  }
   const ok = await comparePassword(parsed.data.password, user.passwordHash);
   if (!ok) return { error: "Invalid email or password." };
 
@@ -130,4 +114,64 @@ export async function loginAction(
 export async function logoutAction(): Promise<void> {
   await clearSessionCookie();
   redirect("/");
+}
+
+/**
+ * Finish an OAuth sign-in: the pending profile comes from the signed
+ * cookie set by the callback route, never from form input. Creates
+ * the user + matching profile, signs the person in, clears the
+ * pending cookie, and sends them to the dashboard.
+ */
+export async function completeOAuthSignupAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await ensureDb();
+  const store = await cookies();
+  const pending = verifyPendingOAuth(store.get("oauth_pending")?.value);
+  if (!pending) {
+    return {
+      error: "Your sign-in session expired. Please try signing in again.",
+    };
+  }
+  const parsed = oauthRoleSchema.safeParse(formValues(formData));
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  }
+  const data = parsed.data;
+  if (data.role === "Doctor" && !data.specialization) {
+    return { error: "Doctors must add their specialization." };
+  }
+
+  const [existing] = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, pending.email));
+  if (existing) {
+    // Someone created an account with this email in the meantime.
+    // Never link or take it over.
+    return {
+      error:
+        existing.authProvider === "Email"
+          ? "An account with this email already exists. Please sign in with email and password instead."
+          : `An account with this email already exists. Please sign in with ${existing.authProvider} instead.`,
+    };
+  }
+
+  const passwordHash = await randomUnusablePasswordHash();
+  const user = await createAccountWithProfile({
+    name: pending.name,
+    email: pending.email,
+    passwordHash,
+    role: data.role,
+    authProvider: providerLabel(pending.provider),
+    qualification: data.qualification,
+    experienceYears: data.experienceYears,
+    consultationFee: data.consultationFee,
+    specialization: data.specialization,
+  });
+
+  store.delete("oauth_pending");
+  await setSessionCookie(signSession(user.userId, data.role));
+  redirect("/dashboard");
 }

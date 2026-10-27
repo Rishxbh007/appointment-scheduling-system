@@ -40,7 +40,9 @@ export const users = pgTable("users", {
   passwordHash: varchar("password_hash", { length: 255 }).notNull(),
   // 'Patient' or 'Doctor' (ER diagram note: 'Doctor / Patient')
   role: varchar("role", { length: 20 }).notNull(),
-  // 'Email' / 'Phone' / 'Google' — this app implements Email.
+  // 'Email' / 'Phone' / 'Google' / 'GitHub' / 'Microsoft' — this
+  // app implements Email, Google, GitHub and Microsoft. (Comment
+  // only; the column itself is unchanged.)
   authProvider: varchar("auth_provider", { length: 20 })
     .notNull()
     .default("Email"),

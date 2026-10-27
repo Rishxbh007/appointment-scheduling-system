@@ -42,6 +42,29 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Enter your password."),
 });
 
+// Role choice after an OAuth sign-in: the profile (email, name,
+// provider) comes from the signed pending-OAuth cookie, never from
+// the form, so this schema only validates the role + doctor fields.
+export const oauthRoleSchema = z.object({
+  role: z.enum(["Patient", "Doctor"]),
+  qualification: z.preprocess(
+    emptyToUndefined,
+    z.string().trim().max(255).optional(),
+  ),
+  experienceYears: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(0).max(80).optional(),
+  ),
+  consultationFee: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().min(0).max(100000).optional(),
+  ),
+  specialization: z.preprocess(
+    emptyToUndefined,
+    z.string().trim().max(255).optional(),
+  ),
+});
+
 export const bookingSchema = z.object({
   slotId: z.coerce.number().int().positive("Pick a time slot."),
   reason: z
