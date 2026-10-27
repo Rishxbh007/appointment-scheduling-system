@@ -1,8 +1,21 @@
 // Sign-in, registration and OAuth role-choice forms.
 //
-// Design: a clean, centred MNC-style card — CareBook wordmark, clear
-// heading, full-width provider buttons, a divider, then the email
-// form, then a footer line switching between sign-in and sign-up.
+// DESIGN (redesigned 2026-10-28 after the user rejected the previous
+// generic centred card, which made sign-in and sign-up look identical):
+// the two pages are deliberately DIFFERENT compositions, adapted from
+// 21st.dev reference designs, with CareBook branding kept consistent
+// (same wordmark, Geist type, teal healthcare accent, provider marks).
+//   - Sign-in follows the 21st.dev split-screen pattern ("Sign In Split
+//     Screen" by felipemenezes098; "Sign In" by muditgoel1512, the Jobsly
+//     split panel; "Auth Page" by Efferd): a deep-teal brand panel on the
+//     left with a welcome message and trust points, and a clean, narrow
+//     form column on the right. Sign-in shows ONLY its own content.
+//   - Registration follows the 21st.dev full-screen sign-up pattern
+//     ("Full Screen Signup" by Preet Suthar; "Premium Auth" by Dhileep
+//     Kumar GM): a wide, centred page on a soft teal wash, with a
+//     large display heading, provider buttons in a horizontal row, a
+//     two-column field grid, and a prominent role-choice section.
+//     Registration shows ONLY its own content.
 // No demo credentials, demo buttons or demo banners appear anywhere
 // here: demo accounts still work in the database, but anyone testing
 // types them in by hand.
@@ -97,22 +110,52 @@ function ProviderMark({ id }: { id: OAuthProvider }) {
   return <MicrosoftMark />;
 }
 
-/** Full-width provider buttons. Unconfigured providers are disabled
- *  and named in the note underneath — never a crash, never a hang. */
-function OAuthButtons({ oauth }: { oauth: OAuthAvailability }) {
+function CheckMark() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="mt-0.5 shrink-0 text-teal-200"
+    >
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+/** Provider buttons. Unconfigured providers are disabled and named in
+ *  the note underneath — never a crash, never a hang. Two arrangements:
+ *  "stack" (sign-in: full-width rows) and "row" (registration: three
+ *  compact buttons side by side). */
+function OAuthButtons({
+  oauth,
+  variant,
+}: {
+  oauth: OAuthAvailability;
+  variant: "stack" | "row";
+}) {
   const missing = PROVIDERS.filter((p) => !p.configured(oauth));
+  const layout =
+    variant === "stack" ? "flex flex-col gap-3" : "grid grid-cols-3 gap-3";
   return (
     <div>
-      <div className="flex flex-col gap-3">
+      <div className={layout}>
         {PROVIDERS.map((p) =>
           p.configured(oauth) ? (
             <a
               key={p.id}
               href={`/api/auth/${p.id}`}
-              className="inline-flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-900 transition-colors hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+              aria-label={`Continue with ${p.label}`}
+              className="inline-flex h-12 w-full items-center justify-center gap-2.5 rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 transition-colors hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
             >
               <ProviderMark id={p.id} />
-              Continue with {p.label}
+              {variant === "stack" ? `Continue with ${p.label}` : p.label}
             </a>
           ) : (
             <button
@@ -120,10 +163,11 @@ function OAuthButtons({ oauth }: { oauth: OAuthAvailability }) {
               type="button"
               disabled
               aria-disabled="true"
-              className="inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-400"
+              aria-label={`Continue with ${p.label}`}
+              className="inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-400"
             >
               <ProviderMark id={p.id} />
-              Continue with {p.label}
+              {variant === "stack" ? `Continue with ${p.label}` : p.label}
             </button>
           ),
         )}
@@ -203,14 +247,14 @@ function PasswordField({
         onBlur={onBlur}
         aria-invalid={hasError}
         aria-describedby={hasError ? errorId : undefined}
-        className="h-12 rounded-xl border-slate-300 pr-16 focus-visible:ring-slate-900"
+        className="h-12 rounded-xl border-slate-300 pr-16 focus:ring-teal-600"
       />
       <button
         type="button"
         onClick={() => setVisible((v) => !v)}
         aria-label={visible ? "Hide password" : "Show password"}
         aria-pressed={visible}
-        className="absolute top-1/2 right-3 -translate-y-1/2 text-xs font-medium text-slate-600 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 rounded"
+        className="absolute top-1/2 right-3 -translate-y-1/2 rounded text-xs font-medium text-slate-600 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
       >
         {visible ? "Hide" : "Show"}
       </button>
@@ -279,11 +323,11 @@ function RoleCards({
               onChange={() => onChange(o.value)}
               className="peer sr-only"
             />
-            <span className="block rounded-xl border border-slate-300 bg-white p-4 transition-colors peer-checked:border-slate-900 peer-checked:bg-slate-50 peer-checked:ring-1 peer-checked:ring-slate-900 peer-focus-visible:ring-2 peer-focus-visible:ring-slate-900">
-              <span className="block text-sm font-semibold text-slate-900">
+            <span className="block rounded-2xl border border-slate-300 bg-white p-5 transition-colors peer-checked:border-teal-700 peer-checked:bg-teal-50 peer-checked:ring-1 peer-checked:ring-teal-700 peer-focus-visible:ring-2 peer-focus-visible:ring-teal-600">
+              <span className="block text-base font-semibold text-slate-900">
                 {o.title}
               </span>
-              <span className="mt-1 block text-xs leading-relaxed text-slate-500">
+              <span className="mt-1 block text-sm leading-relaxed text-slate-500">
                 {o.text}
               </span>
             </span>
@@ -310,7 +354,7 @@ function DoctorFields({
           name="qualification"
           placeholder="MBBS, MD General Medicine"
           onBlur={() => onBlurField("qualification")}
-          className="h-12 rounded-xl border-slate-300 focus-visible:ring-slate-900"
+          className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
         />
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -322,7 +366,7 @@ function DoctorFields({
             type="number"
             min={0}
             placeholder="10"
-            className="h-12 rounded-xl border-slate-300 focus-visible:ring-slate-900"
+            className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
           />
         </div>
         <div className="flex flex-col gap-1.5">
@@ -333,7 +377,7 @@ function DoctorFields({
             type="number"
             min={0}
             placeholder="500"
-            className="h-12 rounded-xl border-slate-300 focus-visible:ring-slate-900"
+            className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
           />
         </div>
       </div>
@@ -348,7 +392,7 @@ function DoctorFields({
           aria-describedby={
             errors.specialization ? "specialization-error" : undefined
           }
-          className="h-12 rounded-xl border-slate-300 focus-visible:ring-slate-900"
+          className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
         />
         <FieldError
           message={errors.specialization}
@@ -363,6 +407,10 @@ function DoctorFields({
   );
 }
 
+/** SIGN-IN ONLY. Split-screen composition: a deep-teal brand panel on
+ *  the left, a narrow form column on the right. Fields: provider
+ *  buttons, email, password — nothing else. No name, no phone, no
+ *  role cards, no registration fields, no demo credentials. */
 export function LoginForm({
   oauth,
   initialError,
@@ -401,77 +449,127 @@ export function LoginForm({
   };
 
   return (
-    <Card className="mx-auto w-full max-w-md rounded-2xl shadow-xl shadow-slate-900/5">
-      <CardHeader className="p-8 pb-2 sm:p-10 sm:pb-2">
-        <BrandHeader
-          title="Sign in to CareBook"
-          description="Welcome back. Sign in to book appointments or manage your practice."
+    <div className="grid lg:min-h-[calc(100dvh-120px)] lg:grid-cols-5">
+      {/* Brand panel: deep teal, welcome message, trust points. */}
+      <div className="relative overflow-hidden bg-gradient-to-br from-teal-900 via-teal-700 to-emerald-600 px-8 py-10 text-white sm:px-10 lg:col-span-2 lg:px-12 lg:py-16">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-white/10"
         />
-      </CardHeader>
-      <CardContent className="flex flex-col gap-6 p-8 pt-6 sm:p-10 sm:pt-6">
-        <OAuthButtons oauth={oauth} />
-        <Divider>or continue with email</Divider>
-        <form
-          action={dispatch}
-          onSubmit={handleSubmit}
-          className="flex flex-col gap-4"
-          noValidate
-        >
-          <FormError message={state.error ?? initialError} />
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              required
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onBlur={validateEmail}
-              aria-invalid={Boolean(errors.email)}
-              aria-describedby={errors.email ? "email-error" : undefined}
-              placeholder="you@example.com"
-              className="h-12 rounded-xl border-slate-300 focus-visible:ring-slate-900"
-            />
-            <FieldError message={errors.email} id="email-error" />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-32 -left-16 h-80 w-80 rounded-full bg-teal-950/30"
+        />
+        <div className="relative flex h-full flex-col gap-10">
+          <p className="text-2xl font-bold tracking-tight">CareBook</p>
+          <div className="flex flex-col gap-4">
+            <p className="text-3xl leading-tight font-bold tracking-tight lg:text-4xl">
+              Welcome back.
+            </p>
+            <p className="max-w-sm text-base leading-relaxed text-teal-50">
+              Book appointments with verified doctors — in minutes, on
+              Indian time.
+            </p>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="password">Password</Label>
-            <PasswordField
-              id="password"
-              name="password"
-              value={password}
-              onChange={setPassword}
-              onBlur={validatePassword}
-              errorId="password-error"
-              hasError={Boolean(errors.password)}
-              autoComplete="current-password"
-            />
-            <FieldError message={errors.password} id="password-error" />
+          <ul className="flex flex-col gap-4 text-sm leading-relaxed text-teal-50">
+            <li className="flex gap-3">
+              <CheckMark />
+              <span>Book in minutes — pick a doctor, pick a slot, done.</span>
+            </li>
+            <li className="flex gap-3">
+              <CheckMark />
+              <span>Doctors confirm your booking on their dashboard.</span>
+            </li>
+            <li className="flex gap-3">
+              <CheckMark />
+              <span>Every slot shown in IST, so the time you see is the time you get.</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      {/* Form column: sign-in only. */}
+      <div className="flex flex-col justify-center bg-white px-6 py-10 sm:px-10 lg:col-span-3 lg:px-16 lg:py-14">
+        <div className="mx-auto w-full max-w-md">
+          <div className="flex flex-col gap-2">
+            <h1 className="text-3xl leading-tight font-bold tracking-tight text-slate-900">
+              Sign in to CareBook
+            </h1>
+            <p className="text-sm leading-relaxed text-slate-500">
+              Welcome back. Sign in to book appointments or manage your
+              practice.
+            </p>
           </div>
-          <Button
-            type="submit"
-            disabled={pending}
-            className="mt-1 h-12 w-full rounded-xl text-base"
-          >
-            {pending ? "Signing in…" : "Sign in"}
-          </Button>
-        </form>
-        <p className="text-center text-sm text-slate-600">
-          New to CareBook?{" "}
-          <Link
-            href="/register"
-            className="font-medium text-slate-900 underline underline-offset-4"
-          >
-            Create an account
-          </Link>
-        </p>
-      </CardContent>
-    </Card>
+          <div className="mt-8 flex flex-col gap-6">
+            <OAuthButtons oauth={oauth} variant="stack" />
+            <Divider>or continue with email</Divider>
+            <form
+              action={dispatch}
+              onSubmit={handleSubmit}
+              className="flex flex-col gap-4"
+              noValidate
+            >
+              <FormError message={state.error ?? initialError} />
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onBlur={validateEmail}
+                  aria-invalid={Boolean(errors.email)}
+                  aria-describedby={errors.email ? "email-error" : undefined}
+                  placeholder="you@example.com"
+                  className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
+                />
+                <FieldError message={errors.email} id="email-error" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="password">Password</Label>
+                <PasswordField
+                  id="password"
+                  name="password"
+                  value={password}
+                  onChange={setPassword}
+                  onBlur={validatePassword}
+                  errorId="password-error"
+                  hasError={Boolean(errors.password)}
+                  autoComplete="current-password"
+                />
+                <FieldError message={errors.password} id="password-error" />
+              </div>
+              <Button
+                type="submit"
+                disabled={pending}
+                className="mt-1 h-12 w-full rounded-xl bg-teal-700 text-base hover:bg-teal-800"
+              >
+                {pending ? "Signing in…" : "Sign in"}
+              </Button>
+            </form>
+            <p className="text-center text-sm text-slate-600">
+              New to CareBook?{" "}
+              <Link
+                href="/register"
+                className="font-medium text-teal-700 underline underline-offset-4 hover:text-teal-800"
+              >
+                Create an account
+              </Link>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
+/** REGISTRATION ONLY. Wide, centred full-screen composition on a soft
+ *  teal wash: display heading, provider buttons in a horizontal row, a
+ *  two-column field grid, and a prominent role-choice section with
+ *  doctor fields when Doctor is chosen. No sign-in-only elements, no
+ *  demo credentials. */
 export function RegisterForm({ oauth }: { oauth: OAuthAvailability }) {
   const [state, dispatch, pending] = useActionState(registerAction, {});
   const [role, setRole] = useState<"Patient" | "Doctor">("Patient");
@@ -528,111 +626,128 @@ export function RegisterForm({ oauth }: { oauth: OAuthAvailability }) {
   };
 
   return (
-    <Card className="mx-auto w-full max-w-md rounded-2xl shadow-xl shadow-slate-900/5">
-      <CardHeader className="p-8 pb-2 sm:p-10 sm:pb-2">
-        <BrandHeader
-          title="Create your account"
-          description="Join CareBook as a patient to book, or as a doctor to receive bookings."
-        />
-      </CardHeader>
-      <CardContent className="flex flex-col gap-6 p-8 pt-6 sm:p-10 sm:pt-6">
-        <OAuthButtons oauth={oauth} />
-        <Divider>or continue with email</Divider>
-        <form
-          action={dispatch}
-          onSubmit={handleSubmit}
-          className="flex flex-col gap-4"
-          noValidate
-        >
-          <FormError message={state.error} />
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="name">Full name</Label>
-            <Input
-              id="name"
-              name="name"
-              required
-              autoComplete="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onBlur={() => validateField("name")}
-              aria-invalid={Boolean(errors.name)}
-              aria-describedby={errors.name ? "name-error" : undefined}
-              placeholder="Your name"
-              className="h-12 rounded-xl border-slate-300 focus-visible:ring-slate-900"
-            />
-            <FieldError message={errors.name} id="name-error" />
+    <div className="bg-gradient-to-b from-teal-50 via-white to-white px-4 py-10 sm:py-14">
+      <div className="mx-auto w-full max-w-3xl">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <p className="text-xl font-bold tracking-tight text-teal-700">
+            CareBook
+          </p>
+          <h1 className="text-4xl leading-tight font-bold tracking-tight text-slate-900 sm:text-[2.75rem]">
+            Create your account
+          </h1>
+          <p className="max-w-lg text-sm leading-relaxed text-slate-500 sm:text-base">
+            Join as a patient to book appointments, or as a doctor to
+            receive them. One account, one role.
+          </p>
+        </div>
+        <div className="mt-10 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-900/5 sm:p-10">
+          <div className="flex flex-col gap-6">
+            <OAuthButtons oauth={oauth} variant="row" />
+            <Divider>or sign up with email</Divider>
+            <form
+              action={dispatch}
+              onSubmit={handleSubmit}
+              className="flex flex-col gap-5"
+              noValidate
+            >
+              <FormError message={state.error} />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                  <Label htmlFor="name">Full name</Label>
+                  <Input
+                    id="name"
+                    name="name"
+                    required
+                    autoComplete="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    onBlur={() => validateField("name")}
+                    aria-invalid={Boolean(errors.name)}
+                    aria-describedby={errors.name ? "name-error" : undefined}
+                    placeholder="Your name"
+                    className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
+                  />
+                  <FieldError message={errors.name} id="name-error" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    name="email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    onBlur={() => validateField("email")}
+                    aria-invalid={Boolean(errors.email)}
+                    aria-describedby={errors.email ? "email-error" : undefined}
+                    placeholder="you@example.com"
+                    className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
+                  />
+                  <FieldError message={errors.email} id="email-error" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="phone">Phone (optional)</Label>
+                  <Input
+                    id="phone"
+                    name="phone"
+                    autoComplete="tel"
+                    placeholder="9876543210"
+                    className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                  <Label htmlFor="password">Password</Label>
+                  <PasswordField
+                    id="password"
+                    name="password"
+                    value={password}
+                    onChange={setPassword}
+                    onBlur={() => validateField("password")}
+                    errorId="password-error"
+                    hasError={Boolean(errors.password)}
+                    autoComplete="new-password"
+                  />
+                  <FieldError message={errors.password} id="password-error" />
+                  <p className="text-xs text-slate-500">
+                    At least 6 characters.
+                  </p>
+                </div>
+              </div>
+              <div className="border-t border-slate-100 pt-5">
+                <RoleCards role={role} onChange={setRole} />
+              </div>
+              {role === "Doctor" && (
+                <DoctorFields
+                  errors={errors}
+                  onBlurField={() => undefined}
+                />
+              )}
+              <Button
+                type="submit"
+                disabled={pending}
+                className="mt-1 h-12 w-full rounded-xl bg-teal-700 text-base hover:bg-teal-800"
+              >
+                {pending ? "Creating account…" : "Create account"}
+              </Button>
+              <p className="text-center text-xs leading-relaxed text-slate-500">
+                One account per role — patient or doctor, never both.
+              </p>
+            </form>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              required
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onBlur={() => validateField("email")}
-              aria-invalid={Boolean(errors.email)}
-              aria-describedby={errors.email ? "email-error" : undefined}
-              placeholder="you@example.com"
-              className="h-12 rounded-xl border-slate-300 focus-visible:ring-slate-900"
-            />
-            <FieldError message={errors.email} id="email-error" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="phone">Phone (optional)</Label>
-            <Input
-              id="phone"
-              name="phone"
-              autoComplete="tel"
-              placeholder="9876543210"
-              className="h-12 rounded-xl border-slate-300 focus-visible:ring-slate-900"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="password">Password</Label>
-            <PasswordField
-              id="password"
-              name="password"
-              value={password}
-              onChange={setPassword}
-              onBlur={() => validateField("password")}
-              errorId="password-error"
-              hasError={Boolean(errors.password)}
-              autoComplete="new-password"
-            />
-            <FieldError message={errors.password} id="password-error" />
-            <p className="text-xs text-slate-500">
-              At least 6 characters.
-            </p>
-          </div>
-          <RoleCards role={role} onChange={setRole} />
-          {role === "Doctor" && (
-            <DoctorFields
-              errors={errors}
-              onBlurField={() => undefined}
-            />
-          )}
-          <Button
-            type="submit"
-            disabled={pending}
-            className="mt-1 h-12 w-full rounded-xl text-base"
-          >
-            {pending ? "Creating account…" : "Create account"}
-          </Button>
-        </form>
-        <p className="text-center text-sm text-slate-600">
+        </div>
+        <p className="mt-6 text-center text-sm text-slate-600">
           Already have an account?{" "}
           <Link
             href="/login"
-            className="font-medium text-slate-900 underline underline-offset-4"
+            className="font-medium text-teal-700 underline underline-offset-4 hover:text-teal-800"
           >
             Sign in
           </Link>
         </p>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 

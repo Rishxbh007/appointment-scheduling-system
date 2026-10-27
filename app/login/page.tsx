@@ -34,12 +34,13 @@ export default async function LoginPage({
   searchParams?: Promise<{ error?: string; provider?: string }>;
 }) {
   const params = (await searchParams) ?? {};
+  // The split-screen layout lives in LoginForm itself, so no shared
+  // container here — that shared wrapper was part of why both pages
+  // used to look the same.
   return (
-    <div className="mx-auto max-w-6xl px-4 py-12 sm:py-16">
-      <LoginForm
-        oauth={getOAuthAvailability()}
-        initialError={errorMessage(params.error, params.provider)}
-      />
-    </div>
+    <LoginForm
+      oauth={getOAuthAvailability()}
+      initialError={errorMessage(params.error, params.provider)}
+    />
   );
 }
