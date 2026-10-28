@@ -5,6 +5,7 @@ import "./globals.css";
 import { getSession } from "@/lib/auth";
 import { logoutAction } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/button";
+import { SiteFooter } from "@/components/site-footer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -89,11 +90,10 @@ export default async function RootLayout({
           </nav>
         </header>
         <main className="flex-1">{children}</main>
-        <footer className="border-t border-border bg-surface py-4">
-          <p className="mx-auto max-w-6xl px-4 text-center text-xs text-ink-faint">
-            CareBook — appointment booking for patients and doctors.
-          </p>
-        </footer>
+        {/* Site footer, hidden on the auth-flow pages (/login,
+          /register, /auth/start) so those pages end cleanly at their
+          own background with no white strip underneath. */}
+        <SiteFooter />
       </body>
     </html>
   );

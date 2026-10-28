@@ -23,9 +23,8 @@ export default async function RegisterPage({
         ? "Patient"
         : undefined;
 
-  // The wide centred layout lives in RegisterForm itself, so no shared
-  // container here — that shared wrapper was part of why both pages
-  // used to look the same.
+  // The narrow-column layout lives in RegisterForm itself
+  // (Linear-style, like the login page), so no shared container here.
   return (
     <RegisterForm oauth={getOAuthAvailability()} initialRole={initialRole} />
   );

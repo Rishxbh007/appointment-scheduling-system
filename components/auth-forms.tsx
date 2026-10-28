@@ -20,12 +20,18 @@
 //     and stays role-aware: ?role=patient|doctor changes the messaging
 //     (never the authorization), and a direct visit gets a Patient |
 //     Doctor switcher. The role copy map lives with LoginForm below.
-//   - Registration follows the 21st.dev full-screen sign-up pattern
-//     ("Full Screen Signup" by Preet Suthar; "Premium Auth" by Dhileep
-//     Kumar GM): a wide, centred page on a soft teal wash, with a
-//     large display heading, provider buttons in a horizontal row, a
-//     two-column field grid, and a prominent role-choice section.
-//     Registration shows ONLY its own content.
+//   - Registration is the Linear-style sibling of sign-in (same narrow
+//     max-w-sm column, NO card box, same small logo mark, same pill
+//     language): role choice FIRST, then the form, then provider
+//     pills, then one compact footer line. The ONLY background is
+//     the soft-yellow glow (components/ui/background-components),
+//     reserved for this page — the violet radial is never imported
+//     or rendered here, so the two backgrounds are never mixed.
+//     Unlike sign-in, the registration form is NOT collapsed: every
+//     field must stay visible so a validation error can never hide
+//     inside a hidden block, so the error banner sits at the top of
+//     the always-rendered form. Registration shows ONLY its own
+//     content.
 // No demo credentials, demo buttons or demo banners appear anywhere
 // here: demo accounts still work in the database, but anyone testing
 // types them in by hand.
@@ -56,6 +62,7 @@ import {
 } from "@/components/ui/card";
 import type { OAuthProvider } from "@/lib/oauth";
 import { RadialBackground } from "@/components/ui/light-theme-tailwind-css-background-snippet";
+import { Component as SoftYellowGlow } from "@/components/ui/background-components";
 
 export type OAuthAvailability = {
   google: boolean;
@@ -135,9 +142,12 @@ function OAuthButtons({
   const missing = PROVIDERS.filter((p) => !p.configured(oauth));
   const layout =
     variant === "stack" ? "flex flex-col gap-3" : "grid grid-cols-3 gap-3";
-  // Sign-in (stack) buttons are full pills, Linear-style; registration
-  // (row) keeps its existing rounded-xl treatment untouched.
-  const radius = variant === "stack" ? "rounded-full" : "rounded-xl";
+  // Both variants are full pills, Linear-style. The register redesign
+  // unified the row branch to the login's pill radius; layout is the
+  // only difference left (stack = full-width labelled column, row =
+  // three-column grid of short labels). Behaviour, copy, and
+  // disabled/unconfigured handling are identical for both.
+  const radius = "rounded-full";
   return (
     <div>
       <div className={layout}>
@@ -172,18 +182,6 @@ function OAuthButtons({
           {missing.map((p) => `${p.label} sign-in isn't configured yet`).join(" · ")}
         </p>
       )}
-    </div>
-  );
-}
-
-function Divider({ children }: { children: string }) {
-  return (
-    <div className="flex items-center gap-3" aria-hidden="true">
-      <span className="h-px flex-1 bg-slate-200" />
-      <span className="text-xs font-medium tracking-wide text-slate-500 uppercase">
-        {children}
-      </span>
-      <span className="h-px flex-1 bg-slate-200" />
     </div>
   );
 }
@@ -698,11 +696,16 @@ export function LoginForm({
     </div>
   );
 }
-/** REGISTRATION ONLY. Wide, centred full-screen composition on a soft
- *  teal wash: display heading, provider buttons in a horizontal row, a
- *  two-column field grid, and a prominent role-choice section with
- *  doctor fields when Doctor is chosen. No sign-in-only elements, no
- *  demo credentials. */
+/** REGISTRATION ONLY. Linear-style narrow column (max-w-sm, NO card
+ *  box), sibling of the Linear login: small centred logo mark,
+ *  role choice FIRST, then the form, provider pills, and one compact
+ *  footer line. The ONLY background is the reserved soft-yellow glow
+ *  (components/ui/background-components); the violet radial is never
+ *  imported or rendered here, so the two backgrounds are never mixed.
+ *  The form itself is always rendered — nothing is hidden behind a
+ *  collapse — so a validation error can never be trapped invisibly;
+ *  the error banner sits at the top of the form. No sign-in-only
+ *  elements, no demo credentials. */
 export function RegisterForm({
   oauth,
   initialRole,
@@ -768,127 +771,136 @@ export function RegisterForm({
     if (Object.values(next).some(Boolean)) ev.preventDefault();
   };
 
+  // Role-preserving sign-in link, mirroring the login page's
+  // role-preserving registration link: the sign-in page's wording
+  // follows the role the visitor just picked here.
+  const loginHref = `/login?role=${role.toLowerCase()}`;
+
   return (
-    <div className="bg-gradient-to-b from-teal-50 via-white to-white px-4 py-10 sm:py-14">
-      <div className="mx-auto w-full max-w-3xl">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <p className="text-xl font-bold tracking-tight text-teal-700">
-            CareBook
-          </p>
-          <h1 className="text-4xl leading-tight font-bold tracking-tight text-slate-900 sm:text-[2.75rem]">
-            Create your account
-          </h1>
-          <p className="max-w-lg text-sm leading-relaxed text-slate-500 sm:text-base">
-            Join as a patient to book appointments, or as a doctor to
-            receive them. One account, one role.
-          </p>
-        </div>
-        <div className="mt-10 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-900/5 sm:p-10">
-          <div className="flex flex-col gap-6">
-            <OAuthButtons oauth={oauth} variant="row" />
-            <Divider>or sign up with email</Divider>
-            <form
-              action={dispatch}
-              onSubmit={handleSubmit}
-              className="flex flex-col gap-5"
-              noValidate
-            >
-              <FormError message={state.error} />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5 sm:col-span-2">
-                  <Label htmlFor="name">Full name</Label>
-                  <Input
-                    id="name"
-                    name="name"
-                    required
-                    autoComplete="name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    onBlur={() => validateField("name")}
-                    aria-invalid={Boolean(errors.name)}
-                    aria-describedby={errors.name ? "name-error" : undefined}
-                    placeholder="Your name"
-                    className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
-                  />
-                  <FieldError message={errors.name} id="name-error" />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    required
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    onBlur={() => validateField("email")}
-                    aria-invalid={Boolean(errors.email)}
-                    aria-describedby={errors.email ? "email-error" : undefined}
-                    placeholder="you@example.com"
-                    className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
-                  />
-                  <FieldError message={errors.email} id="email-error" />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="phone">Phone (optional)</Label>
-                  <Input
-                    id="phone"
-                    name="phone"
-                    autoComplete="tel"
-                    placeholder="9876543210"
-                    className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5 sm:col-span-2">
-                  <Label htmlFor="password">Password</Label>
-                  <PasswordField
-                    id="password"
-                    name="password"
-                    value={password}
-                    onChange={setPassword}
-                    onBlur={() => validateField("password")}
-                    errorId="password-error"
-                    hasError={Boolean(errors.password)}
-                    autoComplete="new-password"
-                  />
-                  <FieldError message={errors.password} id="password-error" />
-                  <p className="text-xs text-slate-500">
-                    At least 6 characters.
-                  </p>
-                </div>
-              </div>
-              <div className="border-t border-slate-100 pt-5">
-                <RoleCards role={role} onChange={setRole} />
-              </div>
-              {role === "Doctor" && (
-                <DoctorFields
-                  errors={errors}
-                  onBlurField={() => undefined}
-                />
-              )}
-              <Button
-                type="submit"
-                disabled={pending}
-                className="mt-1 h-12 w-full rounded-xl bg-teal-700 text-base hover:bg-teal-800"
-              >
-                {pending ? "Creating account…" : "Create account"}
-              </Button>
-              <p className="text-center text-xs leading-relaxed text-slate-500">
-                One account per role — patient or doctor, never both.
-              </p>
-            </form>
+    <div className="relative min-h-dvh min-w-0 overflow-hidden bg-white">
+      <SoftYellowGlow />
+      <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-sm min-w-0 flex-col items-center px-4 py-10 sm:px-6">
+        <div className="w-full min-w-0">
+          <LoginLogo />
+          <div className="mt-6 flex flex-col items-center gap-2 text-center">
+            <h1 className="text-xl leading-tight font-bold tracking-tight text-ink sm:text-2xl">
+              Create your account
+            </h1>
+            <p className="text-sm leading-relaxed text-ink-soft">
+              Join as a patient to book appointments, or as a doctor to
+              receive them. One account, one role.
+            </p>
           </div>
-        </div>
-        <p className="mt-6 text-center text-sm text-slate-600">
-          Already have an account?{" "}
-          <Link
-            href="/login"
-            className="font-medium text-teal-700 underline underline-offset-4 hover:text-teal-800"
+
+          {/* Provider pills first, Linear-style. The row branch is now
+            full pills, unified with the login page. */}
+          <div className="mt-6">
+            <OAuthButtons oauth={oauth} variant="row" />
+          </div>
+
+          <form
+            action={dispatch}
+            onSubmit={handleSubmit}
+            className="mt-6 flex flex-col gap-5"
+            noValidate
           >
-            Sign in
-          </Link>
-        </p>
+            {/* Error banner at the top of the always-rendered form: it
+              can never hide inside a collapsed block, because nothing
+              on this page is collapsed. */}
+            <FormError message={state.error} />
+            {/* Role FIRST: the same "I am joining as" cards, behaviour
+              unchanged — picking a role still only flips this form's
+              fields and the role submitted with it. */}
+            <RoleCards role={role} onChange={setRole} />
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="name">Full name</Label>
+                <Input
+                  id="name"
+                  name="name"
+                  required
+                  autoComplete="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onBlur={() => validateField("name")}
+                  aria-invalid={Boolean(errors.name)}
+                  aria-describedby={errors.name ? "name-error" : undefined}
+                  placeholder="Your name"
+                  className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
+                />
+                <FieldError message={errors.name} id="name-error" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => validateField("email")}
+                  aria-invalid={Boolean(errors.email)}
+                  aria-describedby={errors.email ? "email-error" : undefined}
+                  placeholder="you@example.com"
+                  className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
+                />
+                <FieldError message={errors.email} id="email-error" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="phone">Phone (optional)</Label>
+                <Input
+                  id="phone"
+                  name="phone"
+                  autoComplete="tel"
+                  placeholder="9876543210"
+                  className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="password">Password</Label>
+                <PasswordField
+                  id="password"
+                  name="password"
+                  value={password}
+                  onChange={setPassword}
+                  onBlur={() => validateField("password")}
+                  errorId="password-error"
+                  hasError={Boolean(errors.password)}
+                  autoComplete="new-password"
+                />
+                <FieldError message={errors.password} id="password-error" />
+                <p className="text-xs text-slate-500">
+                  At least 6 characters.
+                </p>
+              </div>
+            </div>
+            {role === "Doctor" && (
+              <DoctorFields errors={errors} onBlurField={() => undefined} />
+            )}
+            <Button
+              type="submit"
+              disabled={pending}
+              className="mt-1 h-12 w-full rounded-full bg-teal-700 text-base hover:bg-teal-800"
+            >
+              {pending ? "Creating account…" : "Create account"}
+            </Button>
+          </form>
+
+          <p className="mt-8 text-center text-sm text-ink-soft">
+            Already have an account?{" "}
+            <Link
+              href={loginHref}
+              className="font-medium text-brand-700 underline underline-offset-4 hover:text-brand-800"
+            >
+              Sign in
+            </Link>
+          </p>
+          <p className="mt-2 text-center text-xs text-ink-faint">
+            One account per role — patient or doctor, never both.
+          </p>
+        </div>
       </div>
     </div>
   );
