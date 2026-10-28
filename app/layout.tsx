@@ -38,7 +38,11 @@ export default async function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-page text-ink">
-        <header className="border-b border-border bg-surface">
+        {/* relative z-10: the register page's ambient wash is a fixed
+          z-0 layer, so the header must sit above it to stay crisp.
+          No visual change on any other page (no other page renders a
+          fixed background layer). */}
+        <header className="relative z-10 border-b border-border bg-surface">
           <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
             <Link
               href="/"

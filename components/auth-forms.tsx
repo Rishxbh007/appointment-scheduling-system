@@ -222,6 +222,7 @@ function PasswordField({
   inputClassName,
   toggleClassName,
   toggleIcon,
+  placeholder,
 }: {
   id: string;
   name: string;
@@ -234,6 +235,10 @@ function PasswordField({
   inputClassName?: string;
   toggleClassName?: string;
   toggleIcon?: boolean;
+  // Optional: only the stepped register form passes one (it replaces
+  // the "At least 6 characters." note line to save vertical space).
+  // Callers that omit it (sign-in) render exactly as before.
+  placeholder?: string;
 }) {
   const [visible, setVisible] = useState(false);
   return (
@@ -244,6 +249,7 @@ function PasswordField({
         type={visible ? "text" : "password"}
         required
         autoComplete={autoComplete}
+        placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
@@ -367,71 +373,129 @@ function RoleCards({
   );
 }
 
+// Optional props are for the stepped register form ONLY. Callers that
+// omit them (the OAuth role form) render exactly what they rendered
+// before: uncontrolled inputs, h-12, full note. When `values` is
+// passed, the fields become controlled, so unmounting them (step
+// change) cannot lose typed data. When `compact` is set, the block
+// shrinks for the no-scroll step-2 budget (tighter gaps, h-10 inputs,
+// text-xs labels, note omitted) — the note's information (the default
+// schedule) is visible on the doctor dashboard after sign-up.
 function DoctorFields({
   errors,
   onBlurField,
+  values,
+  onFieldChange,
+  compact,
 }: {
   errors: Record<string, string>;
   onBlurField: (field: string) => void;
+  values?: {
+    qualification: string;
+    experienceYears: string;
+    consultationFee: string;
+    specialization: string;
+  };
+  onFieldChange?: (field: string, value: string) => void;
+  compact?: boolean;
 }) {
+  const inputClass = compact
+    ? "rounded-xl border-slate-300 focus:ring-teal-600"
+    : "h-12 rounded-xl border-slate-300 focus:ring-teal-600";
+  const labelClass = compact ? "text-xs" : undefined;
+  const fieldGap = compact ? "gap-1" : "gap-1.5";
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="qualification">Qualification</Label>
+    <div className={compact ? "flex flex-col gap-2" : "flex flex-col gap-4"}>
+      <div className={`flex flex-col ${fieldGap}`}>
+        <Label htmlFor="qualification" className={labelClass}>
+          Qualification
+        </Label>
         <Input
           id="qualification"
           name="qualification"
           placeholder="MBBS, MD General Medicine"
+          value={values?.qualification}
+          onChange={
+            values
+              ? (e) => onFieldChange?.("qualification", e.target.value)
+              : undefined
+          }
           onBlur={() => onBlurField("qualification")}
-          className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
+          className={inputClass}
         />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="experienceYears">Experience (years)</Label>
+        <div className={`flex flex-col ${fieldGap}`}>
+          <Label htmlFor="experienceYears" className={labelClass}>
+            Experience (years)
+          </Label>
           <Input
             id="experienceYears"
             name="experienceYears"
             type="number"
             min={0}
             placeholder="10"
-            className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
+            value={values?.experienceYears}
+            onChange={
+              values
+                ? (e) => onFieldChange?.("experienceYears", e.target.value)
+                : undefined
+            }
+            className={inputClass}
           />
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="consultationFee">Consultation fee (₹)</Label>
+        <div className={`flex flex-col ${fieldGap}`}>
+          <Label htmlFor="consultationFee" className={labelClass}>
+            Consultation fee (₹)
+          </Label>
           <Input
             id="consultationFee"
             name="consultationFee"
             type="number"
             min={0}
             placeholder="500"
-            className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
+            value={values?.consultationFee}
+            onChange={
+              values
+                ? (e) => onFieldChange?.("consultationFee", e.target.value)
+                : undefined
+            }
+            className={inputClass}
           />
         </div>
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="specialization">Specialization</Label>
+      <div className={`flex flex-col ${fieldGap}`}>
+        <Label htmlFor="specialization" className={labelClass}>
+          Specialization
+        </Label>
         <Input
           id="specialization"
           name="specialization"
           required
           placeholder="General Physician"
+          value={values?.specialization}
+          onChange={
+            values
+              ? (e) => onFieldChange?.("specialization", e.target.value)
+              : undefined
+          }
           aria-invalid={Boolean(errors.specialization)}
           aria-describedby={
             errors.specialization ? "specialization-error" : undefined
           }
-          className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
+          className={inputClass}
         />
         <FieldError
           message={errors.specialization}
           id="specialization-error"
         />
       </div>
-      <p className="text-xs leading-relaxed text-slate-500">
-        New doctors get a default Mon–Fri 09:00–13:00 schedule on sign-up,
-        so patients can book with you right away.
-      </p>
+      {!compact && (
+        <p className="text-xs leading-relaxed text-slate-500">
+          New doctors get a default Mon–Fri 09:00–13:00 schedule on
+          sign-up, so patients can book with you right away.
+        </p>
+      )}
     </div>
   );
 }
@@ -702,9 +766,14 @@ export function LoginForm({
  *  footer line. The ONLY background is the reserved soft-yellow glow
  *  (components/ui/background-components); the violet radial is never
  *  imported or rendered here, so the two backgrounds are never mixed.
- *  The form itself is always rendered — nothing is hidden behind a
- *  collapse — so a validation error can never be trapped invisibly;
- *  the error banner sits at the top of the form. No sign-in-only
+ *  STEPPED, NO-SCROLL (2026-10-29 rebuild): step 1 shows the role
+ *  cards + provider pills only; step 2 shows the fields. Each step
+ *  fits one viewport (see the height budget in the redesign report),
+ *  so the page never scrolls in its steady state. One form wraps
+ *  both steps and every value lives in component state, so stepping
+ *  back or switching role cannot lose typed data; the error banner
+ *  sits at the top of step 2 and a failed submit stays on step 2.
+ *  Validation and registerAction are unchanged. No sign-in-only
  *  elements, no demo credentials. */
 export function RegisterForm({
   oauth,
@@ -723,6 +792,21 @@ export function RegisterForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Stepped form (no-scroll rule): step 1 = role + providers, step 2
+  // = fields. ALL field values live in this component's state — never
+  // in unmounted DOM — so stepping back and forth, or switching role
+  // on step 1, can never lose typed data. The previously uncontrolled
+  // phone input and DoctorFields are controlled here for exactly this
+  // reason (their shared components keep their old behaviour for
+  // every other caller).
+  const [step, setStep] = useState<1 | 2>(1);
+  const [phone, setPhone] = useState("");
+  const [doctor, setDoctor] = useState({
+    qualification: "",
+    experienceYears: "",
+    consultationFee: "",
+    specialization: "",
+  });
 
   const validateField = (field: string) => {
     setErrors((e) => {
@@ -776,13 +860,21 @@ export function RegisterForm({
   // follows the role the visitor just picked here.
   const loginHref = `/login?role=${role.toLowerCase()}`;
 
+  // NOTE on no-scroll: neither wrapper uses min-h-dvh anymore. The
+  // old min-h-dvh wrapper PLUS the 53px site header above it forced
+  // ~53px of scroll on every viewport even before content was
+  // counted. The wrapper now hugs its content, so page height =
+  // header + step content, and each step's budget (see the report)
+  // fits a standard phone viewport. The fixed wash covers the whole
+  // viewport regardless, so the area below short content still reads
+  // as background, not as a white band.
   return (
-    <div className="relative min-h-dvh min-w-0 overflow-hidden bg-white">
+    <div className="relative min-w-0 overflow-hidden bg-white">
       <SoftYellowGlow />
-      <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-sm min-w-0 flex-col items-center px-4 py-10 sm:px-6">
+      <div className="relative z-10 mx-auto flex w-full max-w-sm min-w-0 flex-col items-center px-4 py-5 sm:px-6">
         <div className="w-full min-w-0">
           <LoginLogo />
-          <div className="mt-6 flex flex-col items-center gap-2 text-center">
+          <div className="mt-4 flex flex-col items-center gap-2 text-center">
             <h1 className="text-xl leading-tight font-bold tracking-tight text-ink sm:text-2xl">
               Create your account
             </h1>
@@ -794,27 +886,60 @@ export function RegisterForm({
 
           {/* Provider pills first, Linear-style. The row branch is now
             full pills, unified with the login page. */}
-          <div className="mt-6">
+          <div className="mt-5">
             <OAuthButtons oauth={oauth} variant="row" />
           </div>
 
+          {/* ONE form wraps both steps, so step 2's submit carries
+            every field. Step 1 renders no text inputs at all (SSR
+            HTML proves it); step 2 renders the fields + a hidden
+            role input, because the role radio lives on step 1 and
+            registerSchema REQUIRES role. */}
           <form
             action={dispatch}
             onSubmit={handleSubmit}
-            className="mt-6 flex flex-col gap-5"
+            className="mt-5 flex flex-col"
             noValidate
           >
-            {/* Error banner at the top of the always-rendered form: it
-              can never hide inside a collapsed block, because nothing
-              on this page is collapsed. */}
-            <FormError message={state.error} />
-            {/* Role FIRST: the same "I am joining as" cards, behaviour
-              unchanged — picking a role still only flips this form's
-              fields and the role submitted with it. */}
-            <RoleCards role={role} onChange={setRole} />
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="name">Full name</Label>
+            {step === 1 ? (
+              <>
+                {/* STEP 1 — role + Continue only. No text inputs exist
+                  on this step, so the initial page is short by
+                  construction. RoleCards behaviour is unchanged. */}
+                <RoleCards role={role} onChange={setRole} />
+                <Button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  className="mt-5 h-12 w-full rounded-full bg-teal-700 text-base hover:bg-teal-800"
+                >
+                  Continue
+                </Button>
+              </>
+            ) : (
+              <>
+                {/* STEP 2 — fields only. The error banner sits at the
+                  top of this step, so it can never hide inside a
+                  collapsed block, and a failed submit stays on step 2
+                  (step is component state, untouched by the action). */}
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setStep(1)}
+                    className="rounded text-sm font-medium text-brand-700 hover:text-brand-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+                  >
+                    ← Back
+                  </button>
+                  <span className="text-xs text-ink-faint">
+                    Step 2 of 2
+                  </span>
+                </div>
+                <div className="mt-3 flex flex-col gap-2">
+                  <FormError message={state.error} />
+                  <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="name" className="text-xs">
+                  Full name
+                </Label>
                 <Input
                   id="name"
                   name="name"
@@ -826,12 +951,14 @@ export function RegisterForm({
                   aria-invalid={Boolean(errors.name)}
                   aria-describedby={errors.name ? "name-error" : undefined}
                   placeholder="Your name"
-                  className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
+                  className="rounded-xl border-slate-300 focus:ring-teal-600"
                 />
                 <FieldError message={errors.name} id="name-error" />
               </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="email">Email</Label>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="email" className="text-xs">
+                  Email
+                </Label>
                 <Input
                   id="email"
                   name="email"
@@ -844,22 +971,28 @@ export function RegisterForm({
                   aria-invalid={Boolean(errors.email)}
                   aria-describedby={errors.email ? "email-error" : undefined}
                   placeholder="you@example.com"
-                  className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
+                  className="rounded-xl border-slate-300 focus:ring-teal-600"
                 />
                 <FieldError message={errors.email} id="email-error" />
               </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="phone">Phone (optional)</Label>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="phone" className="text-xs">
+                  Phone (optional)
+                </Label>
                 <Input
                   id="phone"
                   name="phone"
                   autoComplete="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                   placeholder="9876543210"
-                  className="h-12 rounded-xl border-slate-300 focus:ring-teal-600"
+                  className="rounded-xl border-slate-300 focus:ring-teal-600"
                 />
               </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="password">Password</Label>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="password" className="text-xs">
+                  Password
+                </Label>
                 <PasswordField
                   id="password"
                   name="password"
@@ -869,26 +1002,42 @@ export function RegisterForm({
                   errorId="password-error"
                   hasError={Boolean(errors.password)}
                   autoComplete="new-password"
+                  inputClassName="rounded-xl border-slate-300 pr-16 focus:ring-teal-600"
+                  placeholder="At least 6 characters"
                 />
                 <FieldError message={errors.password} id="password-error" />
-                <p className="text-xs text-slate-500">
-                  At least 6 characters.
-                </p>
               </div>
-            </div>
-            {role === "Doctor" && (
-              <DoctorFields errors={errors} onBlurField={() => undefined} />
+                  </div>
+                  {role === "Doctor" && (
+                    <DoctorFields
+                      errors={errors}
+                      onBlurField={() => undefined}
+                      values={doctor}
+                      onFieldChange={(field, value) =>
+                        setDoctor((d) => ({ ...d, [field]: value }))
+                      }
+                      compact
+                    />
+                  )}
+                  {/* The role radio lives on step 1, so step 2 carries
+                    it as a hidden field — registerSchema REQUIRES
+                    role, and without this a step-2 submit would fail
+                    validation. Hidden inputs take no layout space. */}
+                  <input type="hidden" name="role" value={role} />
+                  <Button
+                    type="submit"
+                    disabled={pending}
+                    className="w-full rounded-full bg-teal-700 text-base hover:bg-teal-800"
+                  >
+                    {pending ? "Creating account…" : "Create account"}
+                  </Button>
+                </div>
+              </>
             )}
-            <Button
-              type="submit"
-              disabled={pending}
-              className="mt-1 h-12 w-full rounded-full bg-teal-700 text-base hover:bg-teal-800"
-            >
-              {pending ? "Creating account…" : "Create account"}
-            </Button>
           </form>
 
-          <p className="mt-8 text-center text-sm text-ink-soft">
+          {/* One footer line, shared by both steps. */}
+          <p className="mt-4 text-center text-sm text-ink-soft">
             Already have an account?{" "}
             <Link
               href={loginHref}
@@ -896,9 +1045,6 @@ export function RegisterForm({
             >
               Sign in
             </Link>
-          </p>
-          <p className="mt-2 text-center text-xs text-ink-faint">
-            One account per role — patient or doctor, never both.
           </p>
         </div>
       </div>
