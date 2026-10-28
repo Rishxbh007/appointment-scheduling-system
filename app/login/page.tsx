@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/auth-forms";
+import { getSession } from "@/lib/auth";
 import { getOAuthAvailability } from "@/lib/oauth";
 
 function providerName(value?: string): string {
@@ -34,6 +36,11 @@ export default async function LoginPage({
   searchParams?: Promise<{ error?: string; provider?: string }>;
 }) {
   const params = (await searchParams) ?? {};
+  // Signed-in users have no business on the sign-in page — send them to
+  // the dashboard, which branches by role. The error case is exempt:
+  // OAuth failures redirect here with ?error=, and that message must
+  // still reach the form even for a signed-in user.
+  if (!params.error && (await getSession())) redirect("/dashboard");
   // The split-screen layout lives in LoginForm itself, so no shared
   // container here — that shared wrapper was part of why both pages
   // used to look the same.

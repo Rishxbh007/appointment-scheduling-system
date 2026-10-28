@@ -1,11 +1,15 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
+/* Appointment-status badge — API unchanged (status string + className).
+ * Tones now come from the design-system status tokens; the values match
+ * the old literal colours, so dashboards look identical. Unknown
+ * statuses keep the neutral fallback. */
 const tones: Record<string, string> = {
-  Booked: "bg-blue-100 text-blue-800",
-  Confirmed: "bg-green-100 text-green-800",
-  Cancelled: "bg-red-100 text-red-800",
-  Completed: "bg-slate-200 text-slate-800",
+  Booked: "bg-info-soft text-info-strong",
+  Confirmed: "bg-success-soft text-success-strong",
+  Cancelled: "bg-danger-soft text-danger-strong",
+  Completed: "bg-neutral-soft text-neutral-strong",
 };
 
 export function Badge({
@@ -19,7 +23,7 @@ export function Badge({
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
-        tones[status] ?? "bg-slate-100 text-slate-800",
+        tones[status] ?? "bg-neutral-faint text-neutral-strong",
         className,
       )}
     >

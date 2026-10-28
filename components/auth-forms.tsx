@@ -570,9 +570,19 @@ export function LoginForm({
  *  two-column field grid, and a prominent role-choice section with
  *  doctor fields when Doctor is chosen. No sign-in-only elements, no
  *  demo credentials. */
-export function RegisterForm({ oauth }: { oauth: OAuthAvailability }) {
+export function RegisterForm({
+  oauth,
+  initialRole,
+}: {
+  oauth: OAuthAvailability;
+  // Optional preselect from /auth/start (?role=patient|doctor). Defaults
+  // to Patient, exactly as before, when absent. No logic changes.
+  initialRole?: "Patient" | "Doctor";
+}) {
   const [state, dispatch, pending] = useActionState(registerAction, {});
-  const [role, setRole] = useState<"Patient" | "Doctor">("Patient");
+  const [role, setRole] = useState<"Patient" | "Doctor">(
+    initialRole ?? "Patient",
+  );
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
