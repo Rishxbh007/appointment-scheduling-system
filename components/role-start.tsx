@@ -11,7 +11,9 @@
 // the codebase already has.
 //
 // Selecting a role navigates to /register?role=patient|doctor, which
-// preselects that role card. It creates no account.
+// preselects that role card. It creates no account. Task 3A: the Sign in
+// link below carries the same role to /login?role=patient|doctor, which
+// only changes sign-in messaging — it proves nothing about identity.
 
 "use client";
 
@@ -135,7 +137,7 @@ export function RoleStartForm() {
         <p className="text-center text-sm text-ink-soft">
           Already have an account?{" "}
           <Link
-            href="/login"
+            href={`/login?role=${selected.role}`}
             className="font-medium text-brand-700 underline underline-offset-4 hover:text-brand-800"
           >
             Sign in

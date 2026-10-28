@@ -30,16 +30,33 @@ function errorMessage(error?: string, provider?: string): string | undefined {
   }
 }
 
+// Task 3A: ?role= is MESSAGING ONLY for the sign-in page (patient- vs
+// doctor-oriented wording + the registration link target). It is never
+// proof of identity: the same loginAction runs for both roles, the
+// server-side account role stays authoritative, and a successful sign-in
+// always redirects to /dashboard. Anything else falls back to the
+// no-role state, which shows a Patient | Doctor switcher.
+function initialRole(value?: string): "Patient" | "Doctor" | undefined {
+  if (value === "patient") return "Patient";
+  if (value === "doctor") return "Doctor";
+  return undefined;
+}
+
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ error?: string; provider?: string }>;
+  searchParams?: Promise<{
+    error?: string;
+    provider?: string;
+    role?: string;
+  }>;
 }) {
   const params = (await searchParams) ?? {};
   // Signed-in users have no business on the sign-in page — send them to
   // the dashboard, which branches by role. The error case is exempt:
   // OAuth failures redirect here with ?error=, and that message must
-  // still reach the form even for a signed-in user.
+  // still reach the form even for a signed-in user. The role parameter
+  // rides along untouched, so an OAuth error keeps its role context.
   if (!params.error && (await getSession())) redirect("/dashboard");
   // The split-screen layout lives in LoginForm itself, so no shared
   // container here — that shared wrapper was part of why both pages
@@ -48,6 +65,7 @@ export default async function LoginPage({
     <LoginForm
       oauth={getOAuthAvailability()}
       initialError={errorMessage(params.error, params.provider)}
+      initialRole={initialRole(params.role)}
     />
   );
 }

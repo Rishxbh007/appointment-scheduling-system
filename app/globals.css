@@ -26,6 +26,8 @@
   --color-brand-700: #0f766e;
   --color-brand-800: #115e59;
   --color-brand-900: #134e4a;
+  /* Midnight teal (Task 3A) — the sign-in brand panel only. */
+  --color-brand-950: #042f2e;
 
   /* Surfaces and text. */
   --color-page: #f8fafc;
