@@ -5,19 +5,21 @@
 // the two pages are deliberately DIFFERENT compositions, adapted from
 // 21st.dev reference designs, with CareBook branding kept consistent
 // (same wordmark, Geist type, teal healthcare accent, provider marks).
-//   - Sign-in is a centred premium card (MNC style: generous white
-//     space, one clear card, minimal chrome) under a giant CAREBOOK
-//     wordmark adapted from the TIDE landing screenshot the user
-//     supplied. The backdrop is a restrained aurora: a violet radial
-//     glow (components/ui/light-theme-tailwind-css-background-snippet)
-//     with a subdued soft-yellow glow layered below the card
-//     (components/ui/background-components). Teal appears only on
-//     buttons, links, the switcher and focus rings. Task 3A's
-//     split-screen panel was removed outright after the user rejected
-//     it ("not even 1%"). Sign-in shows ONLY its own content and stays
-//     role-aware: ?role=patient|doctor changes the messaging (never
-//     the authorization), and a direct visit gets a Patient | Doctor
-//     switcher. The role copy map lives with LoginForm below.
+//   - Sign-in is a Linear-style narrow column (max-w-sm, NO card
+//     box): a small centred logo mark, role-aware heading, a compact
+//     Patient | Doctor switcher, outlined provider buttons, and a
+//     "Continue with email" button that reveals the email + password
+//     form in place — so the first screen is short enough for a phone
+//     with no scrolling. The ONLY background is the violet radial
+//     glow (components/ui/light-theme-tailwind-css-background-snippet);
+//     the soft-yellow glow is reserved for the register redesign (next
+//     task) and is never mixed in here. The giant CAREBOOK wordmark
+//     was removed from this page (its file is kept for later use).
+//     Teal appears only on the primary button, links, the switcher
+//     selection and focus rings. Sign-in shows ONLY its own content
+//     and stays role-aware: ?role=patient|doctor changes the messaging
+//     (never the authorization), and a direct visit gets a Patient |
+//     Doctor switcher. The role copy map lives with LoginForm below.
 //   - Registration follows the 21st.dev full-screen sign-up pattern
 //     ("Full Screen Signup" by Preet Suthar; "Premium Auth" by Dhileep
 //     Kumar GM): a wide, centred page on a soft teal wash, with a
@@ -53,9 +55,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import type { OAuthProvider } from "@/lib/oauth";
-import { LoginWordmark } from "@/components/login-wordmark";
 import { RadialBackground } from "@/components/ui/light-theme-tailwind-css-background-snippet";
-import { Component as SoftYellowGlow } from "@/components/ui/background-components";
 
 export type OAuthAvailability = {
   google: boolean;
@@ -135,6 +135,9 @@ function OAuthButtons({
   const missing = PROVIDERS.filter((p) => !p.configured(oauth));
   const layout =
     variant === "stack" ? "flex flex-col gap-3" : "grid grid-cols-3 gap-3";
+  // Sign-in (stack) buttons are full pills, Linear-style; registration
+  // (row) keeps its existing rounded-xl treatment untouched.
+  const radius = variant === "stack" ? "rounded-full" : "rounded-xl";
   return (
     <div>
       <div className={layout}>
@@ -144,7 +147,7 @@ function OAuthButtons({
               key={p.id}
               href={`/api/auth/${p.id}`}
               aria-label={`Continue with ${p.label}`}
-              className="inline-flex h-12 w-full items-center justify-center gap-2.5 rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 transition-colors hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+              className={`inline-flex h-12 w-full items-center justify-center gap-2.5 ${radius} border border-slate-300 bg-white px-3 text-sm font-medium text-slate-900 transition-colors hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600`}
             >
               <ProviderMark id={p.id} />
               {variant === "stack" ? `Continue with ${p.label}` : p.label}
@@ -156,7 +159,7 @@ function OAuthButtons({
               disabled
               aria-disabled="true"
               aria-label={`Continue with ${p.label}`}
-              className="inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-400"
+              className={`inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-2.5 ${radius} border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-400`}
             >
               <ProviderMark id={p.id} />
               {variant === "stack" ? `Continue with ${p.label}` : p.label}
@@ -435,9 +438,10 @@ function DoctorFields({
   );
 }
 
-/** SIGN-IN ONLY. Premium split-screen composition (Task 3A): a
- *  midnight-teal brand panel on the left (desktop) or a compact brand
- *  strip on top (mobile), and a narrow form column. Fields: provider
+/** SIGN-IN ONLY. Linear-style narrow column (no box, no panel):
+ *  small centred logo, role-aware heading, compact switcher, outlined
+ *  provider buttons, and a "Continue with email" button that reveals
+ *  the email + password form in place. Fields: provider
  *  buttons, email, password — nothing else. No name, no phone, no
  *  registration fields, no demo credentials.
  *
@@ -481,6 +485,23 @@ export function loginCopy(role: LoginRole): RoleCopy {
   return COPY.Neutral;
 }
 
+// Small centred logo mark (Linear-style): badge + wordmark text.
+// Deliberately NOT the giant wordmark (kept in login-wordmark.tsx
+// for later use) and NOT a panel — just the small header mark.
+function LoginLogo() {
+  return (
+    <p className="flex items-center justify-center gap-2 text-lg font-bold tracking-tight text-ink">
+      <span
+        aria-hidden="true"
+        className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-700 text-base font-bold text-white"
+      >
+        +
+      </span>
+      CareBook
+    </p>
+  );
+}
+
 export function LoginForm({
   oauth,
   initialError,
@@ -500,6 +521,10 @@ export function LoginForm({
   const [role, setRole] = useState<"Patient" | "Doctor" | null>(
     initialRole ?? null,
   );
+  // Collapsed by design: the email form only renders after the visitor
+  // taps "Continue with email", so the first screen stays short. The
+  // error banner lives outside this block and is always visible.
+  const [emailOpen, setEmailOpen] = useState(false);
   const copy = loginCopy(role);
   const registerHref = role
     ? `/register?role=${role.toLowerCase()}`
@@ -533,145 +558,141 @@ export function LoginForm({
   return (
     <div className="relative min-h-dvh min-w-0 overflow-hidden">
       <RadialBackground />
-      <SoftYellowGlow />
-      <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-6xl min-w-0 flex-col px-4 sm:px-6">
-        <div className="pt-8 sm:pt-12">
-          <LoginWordmark />
-        </div>
-        <div className="flex flex-1 flex-col items-center justify-center py-8 sm:py-10">
-          <div className="w-full max-w-md min-w-0 rounded-3xl border border-border bg-white p-6 shadow-xl shadow-slate-900/10 sm:p-8">
-            <div className="flex flex-col gap-2">
-              <h1 className="text-2xl leading-tight font-bold tracking-tight text-ink sm:text-3xl">
-                {copy.formHeading}
-              </h1>
-              <p className="text-sm leading-relaxed text-ink-soft sm:text-base">
-                {copy.formSub}
-              </p>
-            </div>
-
-            {/* Role switcher: wording + registration link only. */}
-            <fieldset className="mt-6">
-              <legend className="sr-only">Signing in as</legend>
-              <div className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-surface-subtle p-1">
-                {(["Patient", "Doctor"] as const).map((option) => (
-                  <label key={option} className="cursor-pointer">
-                    <input
-                      type="radio"
-                      name="signin-role"
-                      value={option}
-                      checked={role === option}
-                      onChange={() => setRole(option)}
-                      className="peer sr-only"
-                    />
-                    <span className="block rounded-lg px-3 py-2.5 text-center text-sm font-medium text-ink-soft transition-colors peer-checked:bg-brand-700 peer-checked:text-white peer-checked:shadow-sm peer-focus-visible:outline-2 peer-focus-visible:outline-brand-600 peer-focus-visible:outline-offset-2">
-                      {option}
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <p className="mt-2 text-xs leading-relaxed text-ink-faint">
-                This only changes the wording on this page — your
-                account&apos;s role decides your dashboard after sign-in.
-              </p>
-            </fieldset>
-
-            <div className="mt-8 flex flex-col gap-6">
-              <OAuthButtons oauth={oauth} variant="stack" />
-              <Divider>or continue with email</Divider>
-              <form
-                action={dispatch}
-                onSubmit={handleSubmit}
-                className="flex flex-col gap-4"
-                noValidate
-              >
-                <FormError message={state.error ?? initialError} />
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    required
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    onBlur={validateEmail}
-                    aria-invalid={Boolean(errors.email)}
-                    aria-describedby={errors.email ? "email-error" : undefined}
-                    placeholder="you@example.com"
-                    className="h-12"
-                  />
-                  <FieldError message={errors.email} id="email-error" />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="password">Password</Label>
-                  <PasswordField
-                    id="password"
-                    name="password"
-                    value={password}
-                    onChange={setPassword}
-                    onBlur={validatePassword}
-                    errorId="password-error"
-                    hasError={Boolean(errors.password)}
-                    autoComplete="current-password"
-                    inputClassName="h-12 rounded-xl border-border pr-16 focus-visible:ring-brand-600"
-                    toggleClassName="absolute top-1/2 right-3 -translate-y-1/2 rounded text-xs font-medium text-ink-soft hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
-                    toggleIcon
-                  />
-                  <FieldError message={errors.password} id="password-error" />
-                </div>
-                <Button
-                  type="submit"
-                  size="lg"
-                  disabled={pending}
-                  className="mt-1 w-full"
-                >
-                  {pending ? "Signing in…" : "Sign in"}
-                </Button>
-              </form>
-              <p className="text-center text-sm text-ink-soft">
-                New to CareBook?{" "}
-                <Link
-                  href={registerHref}
-                  className="font-medium text-brand-700 underline underline-offset-4 hover:text-brand-800"
-                >
-                  Create an account
-                </Link>
-              </p>
-              <p className="text-center text-sm text-ink-soft">
-                Not sure which role fits you?{" "}
-                <Link
-                  href="/auth/start"
-                  className="font-medium text-brand-700 underline underline-offset-4 hover:text-brand-800"
-                >
-                  Choose on the role page
-                </Link>
-              </p>
-            </div>
+      <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-sm min-w-0 flex-col items-center justify-center px-4 py-10 sm:px-6">
+        <div className="w-full min-w-0">
+          <LoginLogo />
+          <div className="mt-6 flex flex-col items-center gap-2 text-center">
+            <h1 className="text-xl leading-tight font-bold tracking-tight text-ink sm:text-2xl">
+              {copy.formHeading}
+            </h1>
+            <p className="text-sm leading-relaxed text-ink-soft">
+              {copy.formSub}
+            </p>
           </div>
-        </div>
-        <div className="flex items-center justify-between gap-4 px-1 py-6 text-xs leading-relaxed text-ink-faint">
-          <span>Appointments are shown in IST.</span>
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1 font-medium text-brand-700 hover:text-brand-800"
-          >
-            Back to home
-            <svg
-              aria-hidden="true"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+
+          {/* Role switcher: wording + registration link only. */}
+          <fieldset className="mt-6">
+            <legend className="sr-only">Signing in as</legend>
+            <div className="grid grid-cols-2 gap-1 rounded-full border border-border bg-surface-subtle p-1">
+              {(["Patient", "Doctor"] as const).map((option) => (
+                <label key={option} className="cursor-pointer">
+                  <input
+                    type="radio"
+                    name="signin-role"
+                    value={option}
+                    checked={role === option}
+                    onChange={() => setRole(option)}
+                    className="peer sr-only"
+                  />
+                  <span className="block rounded-full px-3 py-2 text-center text-sm font-medium text-ink-soft transition-colors peer-checked:bg-brand-700 peer-checked:text-white peer-checked:shadow-sm peer-focus-visible:outline-2 peer-focus-visible:outline-brand-600 peer-focus-visible:outline-offset-2">
+                    {option}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="mt-2 text-center text-xs leading-relaxed text-ink-faint">
+              Only changes this page&apos;s wording — your account&apos;s
+              role decides your dashboard.
+            </p>
+          </fieldset>
+
+          {/* Error banner lives here, never inside the collapsed email
+            form, so an OAuth failure stays visible before the form is
+            revealed. */}
+          {state.error ?? initialError ? (
+            <div className="mt-6">
+              <FormError message={state.error ?? initialError} />
+            </div>
+          ) : null}
+
+          <div className="mt-6 flex flex-col gap-3">
+            <OAuthButtons oauth={oauth} variant="stack" />
+            {!emailOpen && (
+              <button
+                type="button"
+                onClick={() => setEmailOpen(true)}
+                aria-expanded={false}
+                aria-controls="login-email-form"
+                className="inline-flex h-12 w-full items-center justify-center rounded-full border border-border bg-white px-4 text-sm font-medium text-ink transition-colors hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+              >
+                Continue with email
+              </button>
+            )}
+          </div>
+
+          {emailOpen && (
+            <form
+              id="login-email-form"
+              action={dispatch}
+              onSubmit={handleSubmit}
+              className="mt-6 flex flex-col gap-4"
+              noValidate
             >
-              <path d="M5 12h14" />
-              <path d="m12 5 7 7-7 7" />
-            </svg>
-          </Link>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  autoFocus
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onBlur={validateEmail}
+                  aria-invalid={Boolean(errors.email)}
+                  aria-describedby={errors.email ? "email-error" : undefined}
+                  placeholder="you@example.com"
+                  className="h-12"
+                />
+                <FieldError message={errors.email} id="email-error" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="password">Password</Label>
+                <PasswordField
+                  id="password"
+                  name="password"
+                  value={password}
+                  onChange={setPassword}
+                  onBlur={validatePassword}
+                  errorId="password-error"
+                  hasError={Boolean(errors.password)}
+                  autoComplete="current-password"
+                  inputClassName="h-12 rounded-xl border-border pr-16 focus-visible:ring-brand-600"
+                  toggleClassName="absolute top-1/2 right-3 -translate-y-1/2 rounded text-xs font-medium text-ink-soft hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+                  toggleIcon
+                />
+                <FieldError message={errors.password} id="password-error" />
+              </div>
+              <Button
+                type="submit"
+                size="lg"
+                disabled={pending}
+                className="mt-1 w-full rounded-full"
+              >
+                {pending ? "Signing in…" : "Sign in"}
+              </Button>
+            </form>
+          )}
+
+          <p className="mt-8 text-center text-sm text-ink-soft">
+            New to CareBook?{" "}
+            <Link
+              href={registerHref}
+              className="font-medium text-brand-700 underline underline-offset-4 hover:text-brand-800"
+            >
+              Create an account
+            </Link>
+          </p>
+          <p className="mt-2 text-center text-xs text-ink-faint">
+            Not sure which role fits you?{" "}
+            <Link
+              href="/auth/start"
+              className="font-medium text-brand-700 hover:text-brand-800"
+            >
+              Choose on the role page
+            </Link>
+          </p>
         </div>
       </div>
     </div>

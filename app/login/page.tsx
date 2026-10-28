@@ -58,9 +58,9 @@ export default async function LoginPage({
   // still reach the form even for a signed-in user. The role parameter
   // rides along untouched, so an OAuth error keeps its role context.
   if (!params.error && (await getSession())) redirect("/dashboard");
-  // The centred-card layout lives in LoginForm itself, so no shared
-  // container here — that shared wrapper was part of why both pages
-  // used to look the same.
+  // The Linear-style narrow-column layout lives in LoginForm itself,
+  // so no shared container here — that shared wrapper was part of why
+  // both pages used to look the same.
   return (
     <LoginForm
       oauth={getOAuthAvailability()}
