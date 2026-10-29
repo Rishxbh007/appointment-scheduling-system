@@ -1,14 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-// Auth-flow pages end cleanly at their own background: no site footer
-// strip underneath them. Every other page keeps the footer. Exact
-// matches only (usePathname strips query strings, so /login?role=…
-// still matches); /auth/choose-role is deliberately NOT in this list.
+// Restrained footer: no bordered panel, no background strip — just the
+// wordmark and the supported links, sitting on the page background.
+// Auth-flow pages end cleanly at their own background: no footer
+// underneath them. Exact matches only (usePathname strips query
+// strings, so /login?role=… still matches); /auth/choose-role is
+// deliberately NOT in this list.
 const HIDDEN_PATHS = ["/login", "/register", "/auth/start"];
 
-export function SiteFooter() {
+export function SiteFooter({ signedIn }: { signedIn: boolean }) {
   const pathname = usePathname();
   const normalized =
     pathname && pathname.length > 1
@@ -17,10 +20,43 @@ export function SiteFooter() {
   if (normalized && HIDDEN_PATHS.includes(normalized)) return null;
 
   return (
-    <footer className="border-t border-border bg-surface py-4">
-      <p className="mx-auto max-w-6xl px-4 text-center text-xs text-ink-faint">
-        CareBook — appointment booking for patients and doctors.
-      </p>
+    <footer className="py-6">
+      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 sm:flex-row">
+        <Link
+          href="/"
+          className="text-sm font-bold tracking-[0.08em] text-ink"
+        >
+          CAREBOOK
+        </Link>
+        <nav className="flex items-center gap-5 text-sm text-ink-soft">
+          <Link href="/doctors" className="transition-colors hover:text-ink">
+            Doctors
+          </Link>
+          {signedIn ? (
+            <Link
+              href="/dashboard"
+              className="transition-colors hover:text-ink"
+            >
+              Dashboard
+            </Link>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className="transition-colors hover:text-ink"
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/register"
+                className="transition-colors hover:text-ink"
+              >
+                Register
+              </Link>
+            </>
+          )}
+        </nav>
+      </div>
     </footer>
   );
 }
