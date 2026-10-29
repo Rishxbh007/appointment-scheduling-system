@@ -1,4 +1,4 @@
-// Server-side OAuth (Google, GitHub, Microsoft) for CareBook.
+// Server-side OAuth (Google, GitHub) for CareBook.
 //
 // Design notes:
 // - No client secrets ever reach browser code. The authorisation URL
@@ -27,7 +27,7 @@ import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-export type OAuthProvider = "google" | "github" | "microsoft";
+export type OAuthProvider = "google" | "github";
 
 export type OAuthProfile = {
   email: string;
@@ -73,28 +73,20 @@ export function isOAuthConfigured(provider: OAuthProvider): boolean {
       process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET,
     );
   }
-  return Boolean(
-    process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET,
-  );
+  return false;
 }
 
 export function getOAuthAvailability(): {
   google: boolean;
   github: boolean;
-  microsoft: boolean;
 } {
   return {
     google: isOAuthConfigured("google"),
     github: isOAuthConfigured("github"),
-    microsoft: isOAuthConfigured("microsoft"),
   };
 }
 
-export const OAUTH_PROVIDERS: OAuthProvider[] = [
-  "google",
-  "github",
-  "microsoft",
-];
+export const OAUTH_PROVIDERS: OAuthProvider[] = ["google", "github"];
 
 export function parseOAuthProvider(value: string): OAuthProvider | null {
   return (OAUTH_PROVIDERS as string[]).includes(value)
@@ -104,8 +96,7 @@ export function parseOAuthProvider(value: string): OAuthProvider | null {
 
 export function providerLabel(provider: OAuthProvider): string {
   if (provider === "google") return "Google";
-  if (provider === "github") return "GitHub";
-  return "Microsoft";
+  return "GitHub";
 }
 
 export function randomState(): string {
@@ -149,23 +140,6 @@ export function buildGitHubAuthUrl(
   return `https://github.com/login/oauth/authorize?${params.toString()}`;
 }
 
-export function buildMicrosoftAuthUrl(
-  clientId: string,
-  redirectUri: string,
-  state: string,
-): string {
-  // Converged endpoint: personal Microsoft accounts and work/school
-  // accounts. Scope includes User.Read so the Graph profile call works.
-  const params = new URLSearchParams({
-    client_id: clientId,
-    response_type: "code",
-    redirect_uri: redirectUri,
-    scope: "openid profile email User.Read",
-    state,
-  });
-  return `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params.toString()}`;
-}
-
 export function buildAuthorizationUrl(
   provider: OAuthProvider,
   state: string,
@@ -181,9 +155,7 @@ export function buildAuthorizationUrl(
     if (!id) return null;
     return buildGitHubAuthUrl(id, redirectUri, state);
   }
-  const id = process.env.MICROSOFT_CLIENT_ID;
-  if (!id) return null;
-  return buildMicrosoftAuthUrl(id, redirectUri, state);
+  return null;
 }
 
 /** Seal a verified OAuth profile for the role-choice step (10 min). */
@@ -199,11 +171,7 @@ export function verifyPendingOAuth(token: string | undefined): OAuthProfile | nu
     const payload = jwt.verify(token, jwtSecret()) as unknown as PendingOAuth;
     if (payload.type !== "oauth_pending") return null;
     if (
-      !(
-        payload.provider === "google" ||
-        payload.provider === "github" ||
-        payload.provider === "microsoft"
-      ) ||
+      !(payload.provider === "google" || payload.provider === "github") ||
       typeof payload.email !== "string" ||
       !payload.email.includes("@") ||
       typeof payload.name !== "string" ||
@@ -324,62 +292,6 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
   }
 }
 
-async function exchangeMicrosoftCode(
-  code: string,
-  redirectUri: string,
-): Promise<OAuthProfile | null> {
-  const tokenRes = await fetch(
-    "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        code,
-        client_id: process.env.MICROSOFT_CLIENT_ID ?? "",
-        client_secret: process.env.MICROSOFT_CLIENT_SECRET ?? "",
-        redirect_uri: redirectUri,
-        grant_type: "authorization_code",
-      }),
-    },
-  );
-  if (!tokenRes.ok) return null;
-  const tokens = (await tokenRes.json()) as {
-    access_token?: string;
-    id_token?: string;
-  };
-  // The ID token comes straight from Microsoft's token endpoint over
-  // TLS, so its claims are the verified profile for this sign-in.
-  if (tokens.id_token) {
-    const claims = decodeJwtPayload(tokens.id_token);
-    const emailRaw =
-      claims?.email ?? claims?.preferred_username ?? claims?.upn;
-    const email =
-      typeof emailRaw === "string" ? emailRaw.trim().toLowerCase() : "";
-    if (email) {
-      const nameRaw = claims?.name;
-      const name =
-        typeof nameRaw === "string" && nameRaw.trim()
-          ? nameRaw.trim()
-          : email.split("@")[0];
-      return { email, name, provider: "microsoft" };
-    }
-  }
-  if (!tokens.access_token) return null;
-  const meRes = await fetch("https://graph.microsoft.com/v1.0/me", {
-    headers: { Authorization: `Bearer ${tokens.access_token}` },
-  });
-  if (!meRes.ok) return null;
-  const me = (await meRes.json()) as {
-    mail?: string | null;
-    userPrincipalName?: string;
-    displayName?: string;
-  };
-  const email = (me.mail ?? me.userPrincipalName ?? "").trim().toLowerCase();
-  if (!email) return null;
-  const name = (me.displayName ?? "").trim() || email.split("@")[0];
-  return { email, name, provider: "microsoft" };
-}
-
 /** Exchange an authorisation code for a verified profile, or null. */
 export function exchangeCode(
   provider: OAuthProvider,
@@ -387,6 +299,5 @@ export function exchangeCode(
 ): Promise<OAuthProfile | null> {
   const redirectUri = getOAuthCallbackUrl(provider);
   if (provider === "google") return exchangeGoogleCode(code, redirectUri);
-  if (provider === "github") return exchangeGitHubCode(code, redirectUri);
-  return exchangeMicrosoftCode(code, redirectUri);
+  return exchangeGitHubCode(code, redirectUri);
 }

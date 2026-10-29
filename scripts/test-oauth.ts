@@ -1,7 +1,7 @@
 // OAuth unit checks, run with:  npx tsx scripts/test-oauth.ts
 //
 // Tests the pure OAuth helpers without touching any provider:
-// authorisation URL builders (all three providers), pending-OAuth
+// authorisation URL builders (both providers), pending-OAuth
 // token round-trip and tamper rejection, provider parsing, the
 // unusable-password hash, and availability flags. An optional
 // database check (OAuth-style account creation via the shared
@@ -15,7 +15,6 @@ import jwt from "jsonwebtoken";
 import {
   buildGoogleAuthUrl,
   buildGitHubAuthUrl,
-  buildMicrosoftAuthUrl,
   buildAuthorizationUrl,
   getOAuthCallbackUrl,
   getOAuthAvailability,
@@ -59,13 +58,6 @@ async function main() {
   );
   check("github URL host", github.includes("github.com/login/oauth/authorize"));
   check("github URL scope", github.includes("user%3Aemail") || github.includes("user:email"));
-  const ms = buildMicrosoftAuthUrl(
-    "dummy-ms-id",
-    "https://carebook-pearl.vercel.app/api/auth/microsoft/callback",
-    "state789",
-  );
-  check("microsoft URL host", ms.includes("login.microsoftonline.com/common/oauth2/v2.0/authorize"));
-  check("microsoft URL scope", ms.includes("User.Read") && ms.includes("openid"));
 
   console.log("2. Env-driven URLs use the production callback paths");
   process.env.NEXT_PUBLIC_APP_URL = "https://carebook-pearl.vercel.app";
@@ -73,8 +65,6 @@ async function main() {
   process.env.GOOGLE_CLIENT_SECRET = "dummy-google-secret";
   process.env.GITHUB_CLIENT_ID = "dummy-github-id";
   process.env.GITHUB_CLIENT_SECRET = "dummy-github-secret";
-  process.env.MICROSOFT_CLIENT_ID = "dummy-ms-id";
-  process.env.MICROSOFT_CLIENT_SECRET = "dummy-ms-secret";
   check(
     "google callback path",
     getOAuthCallbackUrl("google") ===
@@ -85,44 +75,38 @@ async function main() {
     getOAuthCallbackUrl("github") ===
       "https://carebook-pearl.vercel.app/api/auth/github/callback",
   );
+  const built = buildAuthorizationUrl("github", "abc");
   check(
-    "microsoft callback path",
-    getOAuthCallbackUrl("microsoft") ===
-      "https://carebook-pearl.vercel.app/api/auth/microsoft/callback",
-  );
-  const built = buildAuthorizationUrl("microsoft", "abc");
-  check(
-    "microsoft built URL has callback + state",
+    "github built URL has callback + state",
     !!built &&
-      built.includes("carebook-pearl.vercel.app%2Fapi%2Fauth%2Fmicrosoft%2Fcallback") &&
+      built.includes("carebook-pearl.vercel.app%2Fapi%2Fauth%2Fgithub%2Fcallback") &&
       built.includes("state=abc"),
   );
 
   console.log("3. Availability flags follow env vars");
   const on = getOAuthAvailability();
-  check("all providers configured with dummy env", on.google && on.github && on.microsoft);
+  check("all providers configured with dummy env", on.google && on.github);
   delete process.env.GOOGLE_CLIENT_ID;
   delete process.env.GITHUB_CLIENT_ID;
-  delete process.env.MICROSOFT_CLIENT_ID;
   const off = getOAuthAvailability();
-  check("all providers unconfigured without env", !off.google && !off.github && !off.microsoft);
+  check("all providers unconfigured without env", !off.google && !off.github);
 
   console.log("4. Provider parsing");
-  check("parses google/github/microsoft", parseOAuthProvider("google") === "google" && parseOAuthProvider("github") === "github" && parseOAuthProvider("microsoft") === "microsoft");
+  check("parses google/github", parseOAuthProvider("google") === "google" && parseOAuthProvider("github") === "github");
   check("rejects apple/empty", parseOAuthProvider("apple") === null && parseOAuthProvider("") === null);
 
   console.log("5. Pending-OAuth token round-trip");
   const pending = signPendingOAuth({
     email: "oauth-test@example.com",
     name: "OAuth Test",
-    provider: "microsoft",
+    provider: "github",
   });
   const verified = verifyPendingOAuth(pending);
   check(
     "round-trip preserves profile",
     verified?.email === "oauth-test@example.com" &&
       verified?.name === "OAuth Test" &&
-      verified?.provider === "microsoft",
+      verified?.provider === "github",
   );
   check("tampered token rejected", verifyPendingOAuth(pending + "x") === null);
   check("missing token rejected", verifyPendingOAuth(undefined) === null);
@@ -157,7 +141,7 @@ async function main() {
         email,
         passwordHash: await randomUnusablePasswordHash(),
         role: "Patient",
-        authProvider: "Microsoft",
+        authProvider: "GitHub",
       });
       const [profile] = await db
         .select()

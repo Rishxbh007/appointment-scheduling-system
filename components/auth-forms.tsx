@@ -67,7 +67,6 @@ import { Component as SoftYellowGlow } from "@/components/ui/background-componen
 export type OAuthAvailability = {
   google: boolean;
   github: boolean;
-  microsoft: boolean;
 };
 
 const PROVIDERS: Array<{
@@ -77,7 +76,6 @@ const PROVIDERS: Array<{
 }> = [
   { id: "google", label: "Google", configured: (o) => o.google },
   { id: "github", label: "GitHub", configured: (o) => o.github },
-  { id: "microsoft", label: "Microsoft", configured: (o) => o.microsoft },
 ];
 
 function GoogleMark() {
@@ -111,26 +109,14 @@ function GitHubMark() {
   );
 }
 
-function MicrosoftMark() {
-  return (
-    <svg width="19" height="19" viewBox="0 0 23 23" aria-hidden="true">
-      <rect width="11" height="11" fill="#F25022" />
-      <rect x="12" width="11" height="11" fill="#7FBA00" />
-      <rect y="12" width="11" height="11" fill="#00A4EF" />
-      <rect x="12" y="12" width="11" height="11" fill="#FFB900" />
-    </svg>
-  );
-}
-
 function ProviderMark({ id }: { id: OAuthProvider }) {
   if (id === "google") return <GoogleMark />;
-  if (id === "github") return <GitHubMark />;
-  return <MicrosoftMark />;
+  return <GitHubMark />;
 }
 
 /** Provider buttons. Unconfigured providers are disabled and named in
  *  the note underneath — never a crash, never a hang. Two arrangements:
- *  "stack" (sign-in: full-width rows) and "row" (registration: three
+ *  "stack" (sign-in: full-width rows) and "row" (registration: two
  *  compact buttons side by side). */
 function OAuthButtons({
   oauth,
@@ -1064,11 +1050,7 @@ export function OAuthRoleForm({
   const [role, setRole] = useState<"Patient" | "Doctor">("Patient");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const providerName =
-    pending.provider === "google"
-      ? "Google"
-      : pending.provider === "github"
-        ? "GitHub"
-        : "Microsoft";
+    pending.provider === "google" ? "Google" : "GitHub";
 
   const handleSubmit = (ev: React.FormEvent<HTMLFormElement>) => {
     const form = ev.currentTarget;

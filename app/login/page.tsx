@@ -6,7 +6,6 @@ import { getOAuthAvailability } from "@/lib/oauth";
 function providerName(value?: string): string {
   if (value === "google") return "Google";
   if (value === "github") return "GitHub";
-  if (value === "microsoft") return "Microsoft";
   return "Google or GitHub";
 }
 
