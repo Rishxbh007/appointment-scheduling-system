@@ -12,11 +12,13 @@ import {
   bookingSchema,
   slotSchema,
   appointmentStatusSchema,
+  rescheduleSchema,
 } from "@/lib/validation";
 import {
   bookAppointment,
   changeAppointmentStatus,
   createSlot,
+  rescheduleAppointment,
   setSlotActive,
 } from "@/lib/services/booking";
 import {
@@ -112,6 +114,38 @@ export async function patientCancelAction(
   }
   revalidatePath("/dashboard");
   return {};
+}
+
+/** Patient moves their own booking to another slot of the same
+ * doctor. No redirect: the dashboard card revalidates and the UI
+ * shows the success inline. */
+export async function patientRescheduleAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await ensureDb();
+  const session = await getSession();
+  if (!session || session.role !== "Patient") {
+    return { error: "Only patients can reschedule bookings." };
+  }
+  const patientId = await getPatientIdByUser(session.userId);
+  if (!patientId) return { error: "Patient profile not found." };
+
+  const parsed = rescheduleSchema.safeParse(formValues(formData));
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  }
+  try {
+    await rescheduleAppointment(
+      patientId,
+      parsed.data.appointmentId,
+      parsed.data.newSlotId,
+    );
+  } catch (err) {
+    return { error: message(err) };
+  }
+  revalidatePath("/dashboard");
+  return { success: true };
 }
 
 /** Doctor adds one availability window. */

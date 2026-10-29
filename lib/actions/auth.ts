@@ -33,7 +33,7 @@ import {
   randomUnusablePasswordHash,
 } from "@/lib/oauth";
 
-export type ActionState = { error?: string };
+export type ActionState = { error?: string; success?: boolean };
 
 function formValues(formData: FormData): Record<string, string> {
   return Object.fromEntries(

@@ -93,4 +93,13 @@ export const appointmentStatusSchema = z.enum([
   "Completed",
 ]);
 
+export const rescheduleSchema = z.object({
+  appointmentId: z.coerce.number().int().positive("Pick an appointment."),
+  newSlotId: z.coerce.number().int().positive("Pick a new time slot."),
+});
+
+export const favoriteSchema = z.object({
+  doctorId: z.coerce.number().int().positive("Pick a doctor."),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;

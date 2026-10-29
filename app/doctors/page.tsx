@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { ensureDb } from "@/lib/db";
-import { listDoctors } from "@/lib/services/doctors";
+import { getSession } from "@/lib/auth";
+import {
+  listDoctors,
+  getFavoriteDoctorIds,
+} from "@/lib/services/doctors";
+import { getPatientIdByUser } from "@/lib/services/accounts";
+import { FavoriteToggle } from "@/components/favorite-toggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -21,6 +27,19 @@ export default async function DoctorsPage({
   const { q = "" } = await searchParams;
   await ensureDb();
   const doctors = await listDoctors(q);
+
+  // The signed-in patient's own favorite set, computed server-side.
+  // Only booleans travel to the cards below — never another
+  // patient's data, and no toggle at all unless the viewer is a
+  // signed-in patient.
+  const session = await getSession();
+  let favoriteIds = new Set<number>();
+  if (session?.role === "Patient") {
+    const patientId = await getPatientIdByUser(session.userId);
+    if (patientId) {
+      favoriteIds = new Set(await getFavoriteDoctorIds(patientId));
+    }
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
@@ -70,11 +89,20 @@ export default async function DoctorsPage({
                     ? `₹${d.consultationFee} consultation`
                     : "Fee on request"}
                 </p>
-                <Link href={`/doctors/${d.doctorId}`}>
-                  <Button variant="outline" size="sm" className="mt-4">
-                    View &amp; book
-                  </Button>
-                </Link>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <Link href={`/doctors/${d.doctorId}`}>
+                    <Button variant="outline" size="sm">
+                      View &amp; book
+                    </Button>
+                  </Link>
+                  {session?.role === "Patient" && (
+                    <FavoriteToggle
+                      doctorId={d.doctorId}
+                      doctorName={d.name}
+                      isFavorite={favoriteIds.has(d.doctorId)}
+                    />
+                  )}
+                </div>
               </CardContent>
             </Card>
           ))}

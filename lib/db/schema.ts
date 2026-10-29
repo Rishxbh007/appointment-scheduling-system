@@ -18,9 +18,17 @@
 // the doctor's dashboard, so it lives here as plain text. Everything
 // else is exactly the diagram. RescheduleHistory and Notifications are
 // intentionally absent (they belong to weeks 3-4).
+//
+// SECOND documented deviation (Stage 5, favorite doctors): the
+// patient_favorite_doctors table below. The diagram has no place to
+// store a patient's saved doctors, and no existing table can hold
+// that relationship, so this one additive table exists. A favorite
+// is only a bookmark: it is not a booking, endorsement, or
+// verification of the doctor.
 
 import {
   pgTable,
+  primaryKey,
   serial,
   varchar,
   boolean,
@@ -124,9 +132,31 @@ export const appointments = pgTable("appointments", {
   bookedAt: timestamp("booked_at").notNull().defaultNow(),
 });
 
+// A patient's saved doctors (Stage 5). The composite primary key is
+// the database-level duplicate guard: the same patient cannot save
+// the same doctor twice. Both foreign keys cascade, so deleting a
+// patient or a doctor removes their favorites with them. A favorite
+// says nothing about the doctor — it is only that patient's
+// bookmark, and it never implies a booking or endorsement.
+export const patientFavoriteDoctors = pgTable(
+  "patient_favorite_doctors",
+  {
+    patientId: integer("patient_id")
+      .notNull()
+      .references(() => patients.patientId, { onDelete: "cascade" }),
+    doctorId: integer("doctor_id")
+      .notNull()
+      .references(() => doctors.doctorId, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.patientId, t.doctorId] })],
+);
+
 export type User = typeof users.$inferSelect;
 export type Patient = typeof patients.$inferSelect;
 export type Doctor = typeof doctors.$inferSelect;
 export type Specialization = typeof specializations.$inferSelect;
 export type Slot = typeof slots.$inferSelect;
 export type Appointment = typeof appointments.$inferSelect;
+export type PatientFavoriteDoctor =
+  typeof patientFavoriteDoctors.$inferSelect;

@@ -4,9 +4,10 @@
 // points at Neon on Vercel and at a local Postgres here — same driver,
 // same SQL, no divergence between dev and deploy.
 //
-// First-run setup (ensureDb) is idempotent: it creates the seven ER
-// diagram tables if they are missing, adds the double-booking guard
-// index, and seeds demo data only when the users table is empty.
+// First-run setup (ensureDb) is idempotent: it creates the ER
+// diagram tables if they are missing, plus the Stage 5 favorites
+// table below, adds the double-booking guard index, and seeds demo
+// data only when the users table is empty.
 // Every server action and data page calls ensureDb() first, so the
 // app works on a fresh database with no manual migration step.
 
@@ -90,6 +91,16 @@ const DDL = [
     status VARCHAR(20) NOT NULL DEFAULT 'Booked',
     reason TEXT,
     booked_at TIMESTAMP NOT NULL DEFAULT NOW()
+  )`,
+  // Stage 5 (favorite doctors). Additive only: no existing table is
+  // touched. The composite primary key is the duplicate guard — the
+  // same patient cannot save the same doctor twice, even under a
+  // race. A favorite is only a bookmark, never a booking.
+  `CREATE TABLE IF NOT EXISTS patient_favorite_doctors (
+    patient_id INTEGER NOT NULL REFERENCES patients(patient_id) ON DELETE CASCADE,
+    doctor_id INTEGER NOT NULL REFERENCES doctors(doctor_id) ON DELETE CASCADE,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (patient_id, doctor_id)
   )`,
   // Double-booking guard (database level): the same patient can hold
   // at most one ACTIVE appointment on the same slot. Cancelled or

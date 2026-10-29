@@ -126,14 +126,147 @@ export async function bookAppointment(
   });
 }
 
+/**
+ * Move a patient's appointment to a different slot of the SAME
+ * doctor, in one transaction. The appointment row is updated in
+ * place — status, reason and bookedAt never change, and no duplicate
+ * appointment is created. Both slot rows are locked one at a time in
+ * ascending slotId order, so two concurrent reschedules touching the
+ * same slots always lock in the same order and cannot deadlock. The
+ * old slot needs no explicit release: capacity is counted from
+ * active bookings that reference a slot, so moving the row frees the
+ * old slot automatically. Any failed check rolls the whole
+ * transaction back and the original appointment is untouched.
+ */
+export async function rescheduleAppointment(
+  patientId: number,
+  appointmentId: number,
+  newSlotId: number,
+) {
+  return db.transaction(async (tx) => {
+    const [appt] = await tx
+      .select()
+      .from(appointments)
+      .where(eq(appointments.appointmentId, appointmentId));
+    if (!appt) throw new Error("Appointment not found.");
+    if (appt.patientId !== patientId) {
+      throw new Error("This appointment belongs to another patient.");
+    }
+    if (appt.status !== "Booked" && appt.status !== "Confirmed") {
+      throw new Error(
+        `A ${appt.status} appointment cannot be rescheduled.`,
+      );
+    }
+    if (appt.slotId === newSlotId) {
+      throw new Error("Pick a different time slot.");
+    }
+
+    // Lock both slot rows, ascending slotId first, one SELECT each
+    // so Postgres takes the locks in a guaranteed order.
+    const lockOrder =
+      appt.slotId < newSlotId
+        ? [appt.slotId, newSlotId]
+        : [newSlotId, appt.slotId];
+    const lockedRows: Record<string, unknown>[] = [];
+    for (const id of lockOrder) {
+      const locked = await tx.execute(
+        sql`SELECT slot_id, doctor_id, max_appointments, is_active, date, start_time
+            FROM slots WHERE slot_id = ${id} FOR UPDATE`,
+      );
+      const row = (locked.rows as Record<string, unknown>[])[0];
+      if (row) lockedRows.push(row);
+    }
+    // The old slot row may legitimately be gone (its appointment is
+    // what we are moving away from); only the new slot must exist.
+    const newRow = lockedRows.find((r) => r.slot_id === newSlotId);
+    if (!newRow) throw new Error("That time slot no longer exists.");
+    if (newRow.doctor_id !== appt.doctorId) {
+      throw new Error(
+        "You can only reschedule within the same doctor's availability.",
+      );
+    }
+    if (newRow.is_active !== true) {
+      throw new Error("That time slot is no longer available.");
+    }
+    const date = toISODate(newRow.date);
+    const startTime = toHHMM(newRow.start_time);
+    if (!isSlotInFuture(date, startTime)) {
+      throw new Error("That time slot is in the past.");
+    }
+
+    const countRows = await tx
+      .select({ n: sql<number>`count(*)` })
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.slotId, newSlotId),
+          inArray(appointments.status, [...ACTIVE_STATUSES]),
+        ),
+      );
+    const booked = Number(countRows[0]?.n ?? 0);
+    const max = Number(newRow.max_appointments);
+    if (booked >= max) {
+      throw new Error("That time slot is fully booked.");
+    }
+
+    // Same patient, same new slot, already holding an active booking?
+    const existing = await tx
+      .select({ id: appointments.appointmentId })
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.patientId, patientId),
+          eq(appointments.slotId, newSlotId),
+          inArray(appointments.status, [...ACTIVE_STATUSES]),
+        ),
+      );
+    if (existing.length > 0) {
+      throw new Error("You already have an active booking for this slot.");
+    }
+
+    try {
+      // Re-check the status in the UPDATE itself: if a concurrent
+      // cancellation landed after the checks above, this matches no
+      // row and the move is refused instead of moving a cancelled
+      // appointment to a new slot.
+      const [updated] = await tx
+        .update(appointments)
+        .set({ slotId: newSlotId })
+        .where(
+          and(
+            eq(appointments.appointmentId, appointmentId),
+            inArray(appointments.status, [...ACTIVE_STATUSES]),
+          ),
+        )
+        .returning();
+      if (!updated) {
+        throw new Error("This appointment can no longer be rescheduled.");
+      }
+      return updated;
+    } catch (err) {
+      // The partial unique index fired (race that slipped past the
+      // checks above) — report it as a double booking, not a crash.
+      if (
+        err instanceof Error &&
+        err.message.includes("appointments_active_patient_slot_uidx")
+      ) {
+        throw new Error("You already have an active booking for this slot.");
+      }
+      throw err;
+    }
+  });
+}
+
 export type BookingView = {
   appointmentId: number;
   status: string;
   reason: string | null;
   bookedAt: Date;
+  slotId: number;
   slotDate: string;
   slotStart: string;
   slotEnd: string;
+  doctorId: number;
   doctorName: string;
   patientName: string;
 };
@@ -148,6 +281,7 @@ export async function getPatientBookings(
       status: appointments.status,
       reason: appointments.reason,
       bookedAt: appointments.bookedAt,
+      slotId: appointments.slotId,
       slotDate: slots.date,
       slotStart: slots.startTime,
       slotEnd: slots.endTime,
@@ -165,9 +299,11 @@ export async function getPatientBookings(
     status: r.status,
     reason: r.reason,
     bookedAt: r.bookedAt,
+    slotId: r.slotId,
     slotDate: toISODate(r.slotDate),
     slotStart: toHHMM(r.slotStart),
     slotEnd: toHHMM(r.slotEnd),
+    doctorId: r.doctorId,
     doctorName: r.doctorName,
     patientName: "",
   }));
@@ -183,6 +319,7 @@ export async function getDoctorBookings(
       status: appointments.status,
       reason: appointments.reason,
       bookedAt: appointments.bookedAt,
+      slotId: appointments.slotId,
       slotDate: slots.date,
       slotStart: slots.startTime,
       slotEnd: slots.endTime,
@@ -199,9 +336,11 @@ export async function getDoctorBookings(
     status: r.status,
     reason: r.reason,
     bookedAt: r.bookedAt,
+    slotId: r.slotId,
     slotDate: toISODate(r.slotDate),
     slotStart: toHHMM(r.slotStart),
     slotEnd: toHHMM(r.slotEnd),
+    doctorId,
     doctorName: "",
     patientName: r.patientName,
   }));

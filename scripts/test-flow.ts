@@ -86,8 +86,11 @@ async function main() {
   console.log("3. Doctor profile shows bookable slots");
   const profile = await getDoctorProfile(doctor.doctorId);
   check("profile found", !!profile);
-  check("has bookable slots", (profile?.slots.length ?? 0) > 0);
-  const slot = profile!.slots[0];
+  check(
+    "has bookable slots",
+    (profile?.slots.some((s) => s.bookable) ?? false),
+  );
+  const slot = profile!.slots.find((s) => s.bookable)!;
   console.log(
     `    Booking slot ${slot.slotId}: ${slot.date} ${slot.startTime}-${slot.endTime} (${slot.remaining} left)`,
   );

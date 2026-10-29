@@ -12,7 +12,12 @@ import {
   getDoctorBookings,
   getDoctorSlotsForManage,
 } from "@/lib/services/booking";
+import { getDoctorProfile } from "@/lib/services/doctors";
+import { listFavoriteDoctors } from "@/lib/services/doctors";
+import { FavoriteToggle } from "@/components/favorite-toggle";
+import type { BookableSlot } from "@/components/booking-form";
 import { Badge } from "@/components/ui/badge";
+import { AppointmentTimeline } from "@/components/appointment-timeline";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,6 +29,7 @@ import {
 import {
   DoctorStatusButtons,
   PatientCancelButton,
+  PatientRescheduleControl,
   SlotCreateForm,
   SlotToggleButton,
 } from "@/components/dashboard-forms";
@@ -41,6 +47,28 @@ export default async function DashboardPage() {
   if (session.role === "Patient") {
     const patientId = await getPatientIdByUser(session.userId);
     const bookings = patientId ? await getPatientBookings(patientId) : [];
+    const favorites = patientId
+      ? await listFavoriteDoctors(patientId)
+      : [];
+    // Slots per doctor, for the reschedule picker on eligible
+    // cards. The profile returns every upcoming slot with its
+    // state; the picker itself offers bookable slots only. Only
+    // the slot fields travel to the client — the profile's
+    // email/phone stay on the server.
+    const eligibleDoctorIds = [
+      ...new Set(
+        bookings
+          .filter((b) => b.status === "Booked" || b.status === "Confirmed")
+          .map((b) => b.doctorId),
+      ),
+    ];
+    const profiles = await Promise.all(
+      eligibleDoctorIds.map((id) => getDoctorProfile(id)),
+    );
+    const slotsByDoctor = new Map<number, BookableSlot[]>();
+    for (const profile of profiles) {
+      if (profile) slotsByDoctor.set(profile.doctorId, profile.slots);
+    }
     return (
       <div className="mx-auto max-w-6xl px-4 py-10">
         <h1 className="text-3xl font-bold">Welcome, {user.name}</h1>
@@ -76,10 +104,76 @@ export default async function DashboardPage() {
                     <Badge status={b.status} />
                     {(b.status === "Booked" ||
                       b.status === "Confirmed") && (
-                      <PatientCancelButton
-                        appointmentId={b.appointmentId}
-                      />
+                      <div className="flex flex-wrap items-start gap-3">
+                        <PatientRescheduleControl
+                          appointmentId={b.appointmentId}
+                          doctorName={b.doctorName}
+                          currentSlotId={b.slotId}
+                          oldDateLabel={formatDate(b.slotDate)}
+                          oldTimeLabel={`${formatTime(b.slotStart)} – ${formatTime(b.slotEnd)}`}
+                          slots={slotsByDoctor.get(b.doctorId) ?? []}
+                        />
+                        <PatientCancelButton
+                          appointmentId={b.appointmentId}
+                          doctorName={b.doctorName}
+                          dateLabel={formatDate(b.slotDate)}
+                          timeLabel={`${formatTime(b.slotStart)} – ${formatTime(b.slotEnd)}`}
+                        />
+                      </div>
                     )}
+                  </div>
+                </CardContent>
+                <AppointmentTimeline
+                  status={b.status}
+                  bookedAt={b.bookedAt}
+                  dateLabel={formatDate(b.slotDate)}
+                  timeLabel={`${formatTime(b.slotStart)} – ${formatTime(b.slotEnd)}`}
+                />
+              </Card>
+            ))}
+          </div>
+        )}
+
+        <h2 className="mt-10 text-xl font-bold">Favorite Doctors</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Doctors you have saved to find again quickly. Saving a
+          doctor is only a bookmark — it does not book an
+          appointment.
+        </p>
+        {favorites.length === 0 ? (
+          <p className="mt-2 text-slate-600">
+            You haven&apos;t saved any doctors yet. Browse doctors and
+            save the ones you&apos;d like to find again.
+          </p>
+        ) : (
+          <div className="mt-4 grid gap-4">
+            {favorites.map((d) => (
+              <Card key={d.doctorId}>
+                <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
+                  <div>
+                    <p className="font-medium">{d.name}</p>
+                    <p className="text-sm text-slate-600">
+                      {d.specializationNames.join(", ") ||
+                        "General practice"}
+                    </p>
+                    <p className="mt-1 text-sm font-medium">
+                      {d.consultationFee !== null
+                        ? `₹${d.consultationFee} consultation`
+                        : "Fee on request"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link href={`/doctors/${d.doctorId}`}>
+                      <Button variant="outline" size="sm">
+                        View &amp; book
+                      </Button>
+                    </Link>
+                    <FavoriteToggle
+                      doctorId={d.doctorId}
+                      doctorName={d.name}
+                      isFavorite
+                      savedLabel="Remove"
+                    />
                   </div>
                 </CardContent>
               </Card>
@@ -132,9 +226,18 @@ export default async function DashboardPage() {
                   <DoctorStatusButtons
                     appointmentId={b.appointmentId}
                     status={b.status}
+                    patientName={b.patientName}
+                    dateLabel={formatDate(b.slotDate)}
+                    timeLabel={`${formatTime(b.slotStart)} – ${formatTime(b.slotEnd)}`}
                   />
                 </div>
               </CardContent>
+              <AppointmentTimeline
+                status={b.status}
+                bookedAt={b.bookedAt}
+                dateLabel={formatDate(b.slotDate)}
+                timeLabel={`${formatTime(b.slotStart)} – ${formatTime(b.slotEnd)}`}
+              />
             </Card>
           ))}
         </div>

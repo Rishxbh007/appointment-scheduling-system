@@ -2,7 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ensureDb } from "@/lib/db";
 import { getSession } from "@/lib/auth";
-import { getDoctorProfile } from "@/lib/services/doctors";
+import {
+  getDoctorProfile,
+  getFavoriteDoctorIds,
+} from "@/lib/services/doctors";
+import type { DoctorSlotView } from "@/lib/services/doctors";
+import { getPatientIdByUser } from "@/lib/services/accounts";
+import { FavoriteToggle } from "@/components/favorite-toggle";
 import { BookingForm } from "@/components/booking-form";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,12 +36,37 @@ export default async function DoctorPage({
   const profile = await getDoctorProfile(doctorId);
   if (!profile) notFound();
 
-  // Group bookable slots by date for display.
+  // Whether this signed-in patient has saved this doctor. Only
+  // computed for patients; doctors and signed-out visitors never
+  // see the toggle.
+  let isFavorite = false;
+  if (session?.role === "Patient") {
+    const patientId = await getPatientIdByUser(session.userId);
+    if (patientId) {
+      isFavorite = (await getFavoriteDoctorIds(patientId)).includes(
+        doctorId,
+      );
+    }
+  }
+
+  // Group ALL upcoming slots by date for display, including
+  // unavailable ones: a date with no bookable slots still shows
+  // its slots marked unavailable, instead of empty silence.
   const byDate = new Map<string, typeof profile.slots>();
   for (const s of profile.slots) {
     const list = byDate.get(s.date) ?? [];
     list.push(s);
     byDate.set(s.date, list);
+  }
+
+  // Text state label per slot. The label is the signal — colour
+  // alone is never used to convey availability.
+  function slotStateText(s: DoctorSlotView): string {
+    if (s.bookable) return `${s.remaining} of ${s.maxAppointments} left`;
+    if (s.state === "fully-booked")
+      return `Fully booked (0 of ${s.maxAppointments} left)`;
+    if (s.state === "unavailable") return "Unavailable";
+    return "Passed";
   }
 
   return (
@@ -74,6 +105,15 @@ export default async function DoctorPage({
               {profile.email}
               {profile.phone ? ` · ${profile.phone}` : ""}
             </p>
+            {session?.role === "Patient" && (
+              <div className="mt-3">
+                <FavoriteToggle
+                  doctorId={doctorId}
+                  doctorName={profile.name}
+                  isFavorite={isFavorite}
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -108,10 +148,14 @@ export default async function DoctorPage({
         </Card>
       </div>
 
-      <h2 className="mt-10 text-xl font-bold">Available windows</h2>
+      <h2 className="mt-10 text-xl font-bold">Upcoming windows</h2>
+      <p className="mt-1 text-sm text-slate-600">
+        All times shown in IST. Slots marked Fully booked, Unavailable
+        or Passed cannot be booked.
+      </p>
       {byDate.size === 0 ? (
         <p className="mt-2 text-slate-600">
-          No bookable windows right now. Check back later.
+          No upcoming windows right now. Check back later.
         </p>
       ) : (
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -124,12 +168,16 @@ export default async function DoctorPage({
               </CardHeader>
               <CardContent className="flex flex-col gap-1">
                 {daySlots.map((s) => (
-                  <p key={s.slotId} className="text-sm text-slate-700">
+                  <p
+                    key={s.slotId}
+                    className={
+                      s.bookable
+                        ? "text-sm text-slate-700"
+                        : "text-sm text-slate-500"
+                    }
+                  >
                     {formatTime(s.startTime)} – {formatTime(s.endTime)}
-                    <span className="text-slate-500">
-                      {" "}
-                      · {s.remaining} of {s.maxAppointments} left
-                    </span>
+                    <span> · {slotStateText(s)}</span>
                   </p>
                 ))}
               </CardContent>
