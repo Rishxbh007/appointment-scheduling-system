@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import {
   listDoctors,
   getFavoriteDoctorIds,
+  formatDoctorName,
 } from "@/lib/services/doctors";
 import { getPatientIdByUser } from "@/lib/services/accounts";
 import { FavoriteToggle } from "@/components/favorite-toggle";
@@ -73,7 +74,7 @@ export default async function DoctorsPage({
           {doctors.map((d) => (
             <Card key={d.doctorId}>
               <CardHeader>
-                <CardTitle>{d.name}</CardTitle>
+                <CardTitle>{formatDoctorName(d.name)}</CardTitle>
                 <CardDescription>
                   {d.specializationNames.join(", ") || "General practice"}
                 </CardDescription>
@@ -98,7 +99,7 @@ export default async function DoctorsPage({
                   {session?.role === "Patient" && (
                     <FavoriteToggle
                       doctorId={d.doctorId}
-                      doctorName={d.name}
+                      doctorName={formatDoctorName(d.name)}
                       isFavorite={favoriteIds.has(d.doctorId)}
                     />
                   )}

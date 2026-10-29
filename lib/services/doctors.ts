@@ -26,6 +26,19 @@ export type DoctorListItem = {
 };
 
 /**
+ * Doctor names always render with a "Dr." prefix. Seed doctors store
+ * the prefix in their name, registered doctors do not, so normalize
+ * at display time instead of trusting stored data. Already-prefixed
+ * names pass through unchanged (no "Dr. Dr."), and names that merely
+ * start with those letters (e.g. "Drake") are left alone.
+ */
+export function formatDoctorName(name: string): string {
+  const trimmed = name.trim();
+  const withoutPrefix = trimmed.replace(/^dr\.(\s*|$)|^dr(\s+|$)/i, "");
+  return `Dr. ${withoutPrefix.trim()}`;
+}
+
+/**
  * What a patient sees for one upcoming slot. The state is derived
  * from the existing fields, in this order:
  *   inactive window -> "unavailable"

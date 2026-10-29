@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth";
 import {
   getDoctorProfile,
   getFavoriteDoctorIds,
+  formatDoctorName,
 } from "@/lib/services/doctors";
 import type { DoctorSlotView } from "@/lib/services/doctors";
 import { getPatientIdByUser } from "@/lib/services/accounts";
@@ -77,7 +78,7 @@ export default async function DoctorPage({
       <div className="mt-4 grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-2xl">{profile.name}</CardTitle>
+            <CardTitle className="text-2xl">{formatDoctorName(profile.name)}</CardTitle>
             <CardDescription>
               {profile.specializationNames.join(", ") ||
                 "General practice"}
@@ -109,7 +110,7 @@ export default async function DoctorPage({
               <div className="mt-3">
                 <FavoriteToggle
                   doctorId={doctorId}
-                  doctorName={profile.name}
+                  doctorName={formatDoctorName(profile.name)}
                   isFavorite={isFavorite}
                 />
               </div>
@@ -137,7 +138,7 @@ export default async function DoctorPage({
               <div className="flex flex-col items-start gap-3">
                 <p className="text-sm text-slate-600">
                   Sign in as a patient to book an appointment with{" "}
-                  {profile.name}.
+                  {formatDoctorName(profile.name)}.
                 </p>
                 <Link href="/login">
                   <Button>Sign in</Button>

@@ -12,7 +12,7 @@ import {
   getDoctorBookings,
   getDoctorSlotsForManage,
 } from "@/lib/services/booking";
-import { getDoctorProfile } from "@/lib/services/doctors";
+import { getDoctorProfile, formatDoctorName } from "@/lib/services/doctors";
 import { listFavoriteDoctors } from "@/lib/services/doctors";
 import { FavoriteToggle } from "@/components/favorite-toggle";
 import type { BookableSlot } from "@/components/booking-form";
@@ -89,7 +89,7 @@ export default async function DashboardPage() {
               <Card key={b.appointmentId}>
                 <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
                   <div>
-                    <p className="font-medium">{b.doctorName}</p>
+                    <p className="font-medium">{formatDoctorName(b.doctorName)}</p>
                     <p className="text-sm text-slate-600">
                       {formatDate(b.slotDate)}, {formatTime(b.slotStart)} –{" "}
                       {formatTime(b.slotEnd)}
@@ -107,7 +107,7 @@ export default async function DashboardPage() {
                       <div className="flex flex-wrap items-start gap-3">
                         <PatientRescheduleControl
                           appointmentId={b.appointmentId}
-                          doctorName={b.doctorName}
+                          doctorName={formatDoctorName(b.doctorName)}
                           currentSlotId={b.slotId}
                           oldDateLabel={formatDate(b.slotDate)}
                           oldTimeLabel={`${formatTime(b.slotStart)} – ${formatTime(b.slotEnd)}`}
@@ -115,7 +115,7 @@ export default async function DashboardPage() {
                         />
                         <PatientCancelButton
                           appointmentId={b.appointmentId}
-                          doctorName={b.doctorName}
+                          doctorName={formatDoctorName(b.doctorName)}
                           dateLabel={formatDate(b.slotDate)}
                           timeLabel={`${formatTime(b.slotStart)} – ${formatTime(b.slotEnd)}`}
                         />
@@ -151,7 +151,7 @@ export default async function DashboardPage() {
               <Card key={d.doctorId}>
                 <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
                   <div>
-                    <p className="font-medium">{d.name}</p>
+                    <p className="font-medium">{formatDoctorName(d.name)}</p>
                     <p className="text-sm text-slate-600">
                       {d.specializationNames.join(", ") ||
                         "General practice"}
@@ -170,7 +170,7 @@ export default async function DashboardPage() {
                     </Link>
                     <FavoriteToggle
                       doctorId={d.doctorId}
-                      doctorName={d.name}
+                      doctorName={formatDoctorName(d.name)}
                       isFavorite
                       savedLabel="Remove"
                     />
