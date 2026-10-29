@@ -64,7 +64,7 @@ export default function Hero() {
             className="absolute inset-0 scale-90 rounded-full bg-[#d8efe8] opacity-70 blur-3xl"
           />
           <img
-            src="/images/hero-doctor-cutout.png"
+            src="/images/hero-doctor-cutout-v2.png"
             alt="Doctor smiling in a white coat"
             className="relative w-full [mask-image:linear-gradient(to_bottom,black_72%,transparent_98%)] [-webkit-mask-image:linear-gradient(to_bottom,black_72%,transparent_98%)]"
           />
@@ -90,7 +90,7 @@ export default function Hero() {
           <div className="rounded-2xl border border-white/70 bg-white/80 p-4 shadow-xl shadow-slate-900/5 backdrop-blur-md max-sm:static max-sm:mt-3 max-sm:w-full sm:absolute sm:bottom-24 sm:left-0 sm:w-60 sm:-left-4">
             <div className="flex items-center gap-3">
               <img
-                src="/images/hero-doctor-cutout.png"
+                src="/images/hero-doctor-cutout-v2.png"
                 alt=""
                 className="h-11 w-11 rounded-full object-cover object-top"
               />
