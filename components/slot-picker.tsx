@@ -19,6 +19,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { addDays, formatTime, todayIST } from "@/lib/time";
 import type { DoctorSlotView } from "@/lib/services/doctors";
@@ -78,11 +79,17 @@ export function SlotPicker({
   slots,
   selectedSlotId,
   onSelect,
+  onDaySelect,
   excludeSlotId,
 }: {
   slots: SlotChoice[];
   selectedSlotId: number | null;
   onSelect: (slot: SlotChoice) => void;
+  /** Fired when the user switches to a different day, so the
+   * parent can drop the picked time — otherwise the strip
+   * follows the picked time's day forever and other days
+   * look dead (the day chips stop responding). */
+  onDaySelect?: () => void;
   /** E.g. the current slot in a reschedule — never offered again. */
   excludeSlotId?: number;
 }) {
@@ -125,7 +132,16 @@ export function SlotPicker({
                 type="button"
                 role="tab"
                 aria-selected={isActive}
-                onClick={() => setDayOverride(d.date)}
+                onClick={() => {
+                  setDayOverride(d.date);
+                  // Switching days must drop the picked time:
+                  // the strip follows the picked time's day, so
+                  // without this, other days look unclickable
+                  // once any time is picked.
+                  if (selected && selected.date !== d.date) {
+                    onDaySelect?.();
+                  }
+                }}
                 className={cn(
                   "min-w-[78px] shrink-0 rounded-2xl border px-3 py-2.5 text-center transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2",
                   isActive
@@ -184,11 +200,17 @@ export function SlotPicker({
   );
 }
 
-/** Read-only version for the doctor profile's "Available times"
- * section: same day grouping and chip look, but static pills —
- * it is information, not a second picker. Bookable times only,
- * no counts, no state words. */
-export function AvailableTimes({ slots }: { slots: SlotChoice[] }) {
+/** Doctor profile's "Available times" section: same day grouping
+ * and chip look, but each pill is a link that opens the booking
+ * card above with that exact time preselected (?slot=). Bookable
+ * times only, no counts, no state words. */
+export function AvailableTimes({
+  slots,
+  doctorId,
+}: {
+  slots: SlotChoice[];
+  doctorId: number;
+}) {
   const days = groupBookableSlots(slots);
   if (days.length === 0) {
     return (
@@ -206,12 +228,13 @@ export function AvailableTimes({ slots }: { slots: SlotChoice[] }) {
           </p>
           <div className="flex flex-wrap gap-2">
             {d.slots.map((s) => (
-              <span
+              <Link
                 key={s.slotId}
-                className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-1.5 text-sm font-semibold text-brand-800"
+                href={`/doctors/${doctorId}?slot=${s.slotId}#book`}
+                className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-1.5 text-sm font-semibold text-brand-800 transition hover:border-brand-400 hover:bg-brand-100"
               >
                 {formatTime(s.startTime)} – {formatTime(s.endTime)}
-              </span>
+              </Link>
             ))}
           </div>
         </div>

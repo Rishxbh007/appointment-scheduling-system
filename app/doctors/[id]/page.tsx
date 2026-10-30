@@ -35,10 +35,19 @@ function initialsOf(displayName: string): string {
 
 export default async function DoctorPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ slot?: string | string[] }>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
+  const rawSlot = Array.isArray(sp?.slot) ? sp.slot[0] : sp?.slot;
+  // ?slot= from the Available-times pills below: preselect that
+  // time in the booking card. BookingForm ignores it unless the
+  // slot is still bookable.
+  const initialSlotId =
+    rawSlot && /^\d+$/.test(rawSlot) ? Number(rawSlot) : null;
   const doctorId = Number(id);
   if (!Number.isInteger(doctorId)) notFound();
 
@@ -147,7 +156,7 @@ export default async function DoctorPage({
           </CardContent>
         </Card>
 
-        <Card className="shadow-xl ring-2 ring-brand-200">
+        <Card id="book" className="scroll-mt-24 shadow-xl ring-2 ring-brand-200">
           <CardHeader className="bg-gradient-to-br from-teal-50 via-surface to-amber-50">
             <CardTitle>Book an appointment</CardTitle>
             <CardDescription>
@@ -162,6 +171,7 @@ export default async function DoctorPage({
                 consultationFee={profile.consultationFee}
                 doctorName={formatDoctorName(profile.name)}
                 prefill={checkoutPrefill}
+                initialSlotId={initialSlotId}
               />
             ) : session?.role === "Doctor" ? (
               <p className="text-sm text-slate-600">
@@ -189,9 +199,10 @@ export default async function DoctorPage({
       </h2>
       <p className="mt-1 text-sm text-slate-600">
         All times shown in IST. Only days and times that are actually
-        available are listed — pick one in the booking card above.
+        available are listed — tap a time to pick it in the booking
+        card above.
       </p>
-      <AvailableTimes slots={profile.slots} />
+      <AvailableTimes slots={profile.slots} doctorId={doctorId} />
     </div>
     </div>
   );

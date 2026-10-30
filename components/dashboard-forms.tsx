@@ -447,6 +447,7 @@ export function PatientRescheduleControl({
                 slots={options}
                 selectedSlotId={selected?.slotId ?? null}
                 onSelect={setSelected}
+                onDaySelect={() => setSelected(null)}
                 excludeSlotId={currentSlotId}
               />
               <DialogFooter>

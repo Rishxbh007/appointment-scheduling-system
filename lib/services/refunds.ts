@@ -75,9 +75,10 @@ async function findRefundByPayment(
  * exactly one captured payment under a DIFFERENT id, the stored
  * reference is stale — re-sync it to the captured id and let the
  * caller retry the refund exactly once. Returns the healed id, or
- * null when no heal applies. Never throws: any lookup failure
- * returns null. Server logs carry row ids only, never gateway ids
- * (this helper logs nothing at all).
+ * null plus a why-not detail when no heal applies. Never throws:
+ * any lookup failure returns null with its detail. Server logs
+ * carry row ids only, never gateway ids (this helper logs
+ * nothing at all).
  *
  * Exactly-one matters: with zero captured payments there is
  * nothing to refund against; with several, picking one would be a
@@ -88,17 +89,48 @@ async function healStalePaymentReference(input: {
   paymentRowId: number;
   storedPaymentId: string | null;
   orderId: string | null;
-}): Promise<string | null> {
-  if (!input.orderId || !input.storedPaymentId) return null;
+}): Promise<
+  | { healed: string; detail: null }
+  | { healed: null; detail: string }
+> {
+  if (!input.orderId)
+    return { healed: null, detail: "no order recorded for this payment" };
+  if (!input.storedPaymentId)
+    return { healed: null, detail: "no payment reference recorded" };
   const captured = await fetchPaymentsByOrder(input.orderId);
-  if (captured === null || captured.length !== 1) return null;
+  if (captured === null)
+    return { healed: null, detail: "order lookup failed" };
+  if (captured.length === 0)
+    return {
+      healed: null,
+      detail: "no captured payment found for this order",
+    };
+  if (captured.length !== 1)
+    return {
+      healed: null,
+      detail:
+        "several captured payments found for this order, refusing to guess",
+    };
   const healed = captured[0];
-  if (healed === input.storedPaymentId) return null;
+  if (healed === input.storedPaymentId)
+    return {
+      healed: null,
+      detail: "stored reference already matches the captured payment",
+    };
   await db
     .update(payments)
     .set({ razorpayPaymentId: healed })
     .where(eq(payments.paymentId, input.paymentRowId));
-  return healed;
+  return { healed, detail: null };
+}
+
+/** True when a Razorpay failure means "payment reference
+ * unknown": either the status-404 fallback text or Razorpay's
+ * own "id does not exist" description. The old check only
+ * matched the fallback, so self-heal never fired on Razorpay's
+ * real error text. */
+function isNotFoundReason(reason: string): boolean {
+  return /\(status 404\)/.test(reason) || /does not exist/i.test(reason);
 }
 
 /**
@@ -189,38 +221,42 @@ export async function initiateRefundForCancellation(
     );
     const reason =
       err instanceof Error ? err.message : "Refund failed.";
-    // Bounded self-heal, 404-only: a 404 means Razorpay does not
+    // Bounded self-heal, not-found-only: a not-found means Razorpay does not
     // recognise the stored reference, not that the payment is
     // unrefundable. If the order holds exactly one captured
     // payment under a different id, re-sync to it and retry the
     // refund exactly once (adopting an existing gateway refund
     // first, so a healed retry can never double-pay). Any other
-    // outcome keeps the original failure below.
-    if (/\(status 404\)/.test(reason)) {
-      const healed = await healStalePaymentReference({
+    // outcome keeps the original failure below, with the
+    // why-not detail appended so the next retry is diagnosable.
+    let failureReason = reason;
+    if (isNotFoundReason(reason)) {
+      const heal = await healStalePaymentReference({
         paymentRowId: payment.paymentId,
         storedPaymentId: payment.razorpayPaymentId,
         orderId: payment.razorpayOrderId,
       });
-      if (healed) {
-        const adopted = await findExistingGatewayRefund(healed);
+      if (heal.healed) {
+        const adopted = await findExistingGatewayRefund(heal.healed);
         if (adopted) {
           return insert({ status: "Initiated", gatewayRefundId: adopted });
         }
         try {
           const gatewayRefundId = await createRazorpayRefund({
-            razorpayPaymentId: healed,
+            razorpayPaymentId: heal.healed,
             amountPaise: payment.amountPaise,
           });
           return insert({ status: "Initiated", gatewayRefundId });
         } catch {
           // Fall through: the original failure stands.
         }
+      } else {
+        failureReason = `${reason} [refund check: ${heal.detail}]`;
       }
     }
     return insert({
       status: "Failed",
-      failureReason: reason,
+      failureReason,
     });
   }
 }
@@ -319,22 +355,23 @@ export async function retryRefund(
       .returning();
     return row;
   } catch (err) {
-    const reason =
+    let reason =
       err instanceof Error ? err.message : "Refund failed.";
-    // Bounded self-heal, 404-only — same rule as initiation: if
+    // Bounded self-heal, not-found-only — same rule as initiation: if
     // the order holds exactly one captured payment under a
     // different id, re-sync to it and retry the refund exactly
     // once (adopting an existing gateway refund first, so a
     // healed retry can never double-pay). Any other outcome
-    // keeps the original failure via failBack below.
-    if (/\(status 404\)/.test(reason)) {
-      const healed = await healStalePaymentReference({
+    // keeps the original failure via failBack below, with the
+    // why-not detail appended so the next retry is diagnosable.
+    if (isNotFoundReason(reason)) {
+      const heal = await healStalePaymentReference({
         paymentRowId: found.refund.paymentId,
         storedPaymentId: found.razorpayPaymentId,
         orderId: found.razorpayOrderId,
       });
-      if (healed) {
-        const adopted = await findExistingGatewayRefund(healed);
+      if (heal.healed) {
+        const adopted = await findExistingGatewayRefund(heal.healed);
         if (adopted) {
           const [row] = await db
             .update(refunds)
@@ -345,7 +382,7 @@ export async function retryRefund(
         }
         try {
           const gatewayRefundId = await createRazorpayRefund({
-            razorpayPaymentId: healed,
+            razorpayPaymentId: heal.healed,
             amountPaise: found.amountPaise,
           });
           const [row] = await db
@@ -357,6 +394,8 @@ export async function retryRefund(
         } catch {
           // Fall through: the original failure stands.
         }
+      } else {
+        reason = `${reason} [refund check: ${heal.detail}]`;
       }
     }
     return failBack(reason);

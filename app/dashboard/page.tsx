@@ -102,16 +102,21 @@ function initialsOf(displayName: string): string {
 }
 
 /**
- * Dashboard wording for a failed refund. A 404 from Razorpay
+ * Dashboard wording for a failed refund. A not-found from Razorpay
+ * (status 404, or Razorpay's own "id does not exist" description)
  * means the gateway does not recognise the payment reference
  * under the configured keys — the refund was never created, and
- * the generic provider-status text hides that. Any other reason
- * is shown exactly as recorded.
+ * the generic provider-status text hides that. Any why-not detail
+ * the self-heal appended is kept, so a still-failing refund says
+ * what the order lookup found. Any other reason is shown exactly
+ * as recorded.
  */
 function refundFailureText(reason: string | null): string {
   if (!reason) return "";
-  if (/status 404\b/.test(reason)) {
-    return " — Razorpay could not find this payment reference — the refund was not created";
+  const check = reason.match(/\[(refund check:[^\]]+)\]/);
+  const suffix = check ? ` ${check[0]}` : "";
+  if (/status 404\b/.test(reason) || /does not exist/i.test(reason)) {
+    return ` — Razorpay could not find this payment reference — the refund was not created${suffix}`;
   }
   return ` — ${reason}`;
 }

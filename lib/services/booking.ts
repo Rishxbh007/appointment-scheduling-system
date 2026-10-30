@@ -15,7 +15,7 @@
 //   a legal transition. Doctors never cancel a Pending booking:
 //   the hold belongs to the patient until it is paid or expires.
 
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   users,
@@ -502,7 +502,10 @@ export async function getPatientBookings(
     .innerJoin(doctors, eq(appointments.doctorId, doctors.doctorId))
     .innerJoin(users, eq(doctors.userId, users.userId))
     .where(eq(appointments.patientId, patientId))
-    .orderBy(asc(slots.date), asc(slots.startTime));
+    // Newest booking first: a patient scanning "My bookings"
+    // expects the booking they just made on top, not buried in
+    // the middle by its appointment date.
+    .orderBy(desc(appointments.bookedAt));
   return rows.map((r) => ({
     appointmentId: r.appointmentId,
     status: r.status,

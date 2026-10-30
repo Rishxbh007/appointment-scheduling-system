@@ -81,6 +81,7 @@ export function BookingForm({
   consultationFee,
   doctorName,
   prefill,
+  initialSlotId,
 }: {
   slots: BookableSlot[];
   /** The doctor's fee as stored (e.g. "500.00"), or null. */
@@ -88,10 +89,18 @@ export function BookingForm({
   doctorName?: string;
   /** Signed-in patient's own details for checkout prefill. */
   prefill?: CheckoutPrefill;
+  /** Slot preselected from the profile's Available-times pills
+   * (?slot=). Ignored unless it is still bookable — the server
+   * revalidates the chosen slot at submit time anyway. */
+  initialSlotId?: number | null;
 }) {
   const [state, dispatch, pending] = useActionState(bookAction, {});
   const [step, setStep] = useState(0);
-  const [selected, setSelected] = useState<SlotChoice | null>(null);
+  const [selected, setSelected] = useState<SlotChoice | null>(
+    () =>
+      slots.find((s) => s.slotId === initialSlotId && s.bookable) ??
+      null,
+  );
   const [reason, setReason] = useState("");
 
   const bookable = slots.filter((s) => s.bookable);
@@ -149,6 +158,7 @@ export function BookingForm({
             slots={bookable}
             selectedSlotId={selected?.slotId ?? null}
             onSelect={setSelected}
+            onDaySelect={() => setSelected(null)}
           />
           <Button
             type="button"
