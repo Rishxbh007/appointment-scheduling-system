@@ -102,6 +102,26 @@ export function BookingForm({
       null,
   );
   const [reason, setReason] = useState("");
+  // Pill picks arrive AFTER mount: an Available-times pill is a
+  // link to ?slot=, and that navigation re-renders the page
+  // without remounting this form — so the useState initializer
+  // above never re-runs and the card kept the old time. Adjust
+  // the selection during render when the pill slot changes to a
+  // still-bookable slot (React's sanctioned prop-change
+  // pattern, not an effect). The typed reason and the current
+  // step are untouched, and an unbookable pill slot leaves the
+  // current selection alone.
+  const [prevInitialSlotId, setPrevInitialSlotId] =
+    useState(initialSlotId);
+  if (initialSlotId !== prevInitialSlotId) {
+    setPrevInitialSlotId(initialSlotId);
+    const picked =
+      slots.find((s) => s.slotId === initialSlotId && s.bookable) ??
+      null;
+    if (picked && picked.slotId !== selected?.slotId) {
+      setSelected(picked);
+    }
+  }
 
   const bookable = slots.filter((s) => s.bookable);
 
