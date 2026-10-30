@@ -11,6 +11,10 @@ import {
   createSlotAction,
   toggleSlotAction,
 } from "@/lib/actions/booking";
+import {
+  savePayoutDetailsAction,
+  type PayoutActionState,
+} from "@/lib/actions/payouts";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -539,5 +543,157 @@ export function SlotToggleButton({
       </Button>
       <ErrorNote message={state.error} />
     </form>
+  );
+}
+
+/** Field-level validation message, rendered under its field. */
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return (
+    <p role="alert" className="text-xs leading-relaxed text-red-600">
+      {message}
+    </p>
+  );
+}
+
+/**
+ * Doctor payout details (weekly settlement): where the doctor's
+ * settlements should go — UPI, bank transfer, or both. Renders
+ * only on the owning doctor's own dashboard, inside the doctor
+ * branch of the dashboard page, so patients never see it.
+ *
+ * Display safety: the bank account number is NEVER prefilled and
+ * never rendered in full. The saved value shows only as its
+ * masked form (•••• + last 4), and the account field stays blank
+ * with "leave blank to keep" — blank means keep the stored
+ * number. The UPI ID is the doctor's own payment handle and is
+ * shown in full to them alone.
+ */
+export function PayoutDetailsForm({
+  upiId,
+  ifsc,
+  accountHolder,
+  maskedAccountNumber,
+  hasDetails,
+}: {
+  upiId: string | null;
+  ifsc: string | null;
+  accountHolder: string | null;
+  maskedAccountNumber: string | null;
+  hasDetails: boolean;
+}) {
+  const [state, dispatch, pending] = useActionState<
+    PayoutActionState,
+    FormData
+  >(savePayoutDetailsAction, {});
+  return (
+    <div className="flex flex-col gap-4">
+      {hasDetails ? (
+        <div className="rounded-2xl border border-teal-100 bg-teal-50/60 px-4 py-3 text-sm leading-relaxed">
+          <p className="font-semibold text-teal-900">
+            Saved payout details
+          </p>
+          {upiId && (
+            <p className="mt-1 text-slate-700">
+              UPI ID: <span className="font-medium">{upiId}</span>
+            </p>
+          )}
+          {maskedAccountNumber && (
+            <p className="mt-1 text-slate-700">
+              Bank: <span className="font-medium">{accountHolder}</span>
+              {" · "}
+              <span className="font-medium">{ifsc}</span>
+              {" · "}
+              <span className="font-medium">{maskedAccountNumber}</span>
+            </p>
+          )}
+          <p className="mt-1 text-xs text-slate-500">
+            Only you see these details. Your bank account number is
+            never shown in full.
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm leading-relaxed text-slate-600">
+          No payout details saved yet. Add a UPI ID or your bank
+          details below so weekly settlements have somewhere to go.
+        </p>
+      )}
+      <form action={dispatch} className="flex flex-col gap-3">
+        <ErrorNote message={state.error} />
+        {state.success && (
+          <p role="status" className="text-sm font-medium text-teal-800">
+            Payout details saved.
+          </p>
+        )}
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="upiId">UPI ID</Label>
+          <Input
+            id="upiId"
+            name="upiId"
+            autoComplete="off"
+            placeholder="name@okaxis"
+            defaultValue={upiId ?? ""}
+          />
+          <FieldError message={state.fieldErrors?.upiId} />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="accountHolder">Account holder name</Label>
+            <Input
+              id="accountHolder"
+              name="accountHolder"
+              autoComplete="off"
+              placeholder="As printed on the account"
+              defaultValue={accountHolder ?? ""}
+            />
+            <FieldError message={state.fieldErrors?.accountHolder} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ifsc">IFSC</Label>
+            <Input
+              id="ifsc"
+              name="ifsc"
+              autoComplete="off"
+              placeholder="ABCD0123456"
+              defaultValue={ifsc ?? ""}
+              onChange={(e) => {
+                e.target.value = e.target.value.toUpperCase();
+              }}
+            />
+            <FieldError message={state.fieldErrors?.ifsc} />
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="accountNumber">Bank account number</Label>
+          <Input
+            id="accountNumber"
+            name="accountNumber"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder={
+              maskedAccountNumber
+                ? `${maskedAccountNumber} — leave blank to keep`
+                : "9–18 digits"
+            }
+          />
+          <FieldError message={state.fieldErrors?.accountNumber} />
+          <p className="text-xs leading-relaxed text-slate-500">
+            Leave blank to keep your current number. It is never
+            shown in full — only the last 4 digits ever appear here.
+          </p>
+        </div>
+        <p className="text-xs leading-relaxed text-slate-500">
+          Add a UPI ID, or your complete bank details — or both.
+          Weekly settlements go to the details saved here.
+        </p>
+        <Button
+          type="submit"
+          disabled={pending}
+          className="self-start rounded-full"
+        >
+          {pending ? "Saving…" : "Save payout details"}
+        </Button>
+      </form>
+    </div>
   );
 }

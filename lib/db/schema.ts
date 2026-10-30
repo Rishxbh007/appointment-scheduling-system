@@ -112,6 +112,16 @@ export const doctors = pgTable("doctors", {
   experienceYears: integer("experience_years"),
   consultationFee: numeric("consultation_fee", { precision: 10, scale: 2 }),
   isApproved: boolean("is_approved").notNull().default(false),
+  // Doctor payout details (weekly settlement). All optional: a
+  // doctor may pay out via UPI, via bank transfer, or both — but
+  // at least one complete method must be present (enforced in
+  // lib/services/payouts.ts). The full account number is never
+  // rendered back to any page; only its masked form leaves the
+  // service layer.
+  payoutUpiId: varchar("payout_upi_id", { length: 100 }),
+  payoutAccountNumber: varchar("payout_account_number", { length: 20 }),
+  payoutIfsc: varchar("payout_ifsc", { length: 11 }),
+  payoutAccountHolder: varchar("payout_account_holder", { length: 255 }),
 });
 
 export const specializations = pgTable("specializations", {

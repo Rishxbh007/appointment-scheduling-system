@@ -19,6 +19,7 @@ import {
 import {
   getPaymentHistoryForPatient,
 } from "@/lib/services/refunds";
+import { getPayoutDetails } from "@/lib/services/payouts";
 import { getDoctorProfile, formatDoctorName } from "@/lib/services/doctors";
 import { listFavoriteDoctors } from "@/lib/services/doctors";
 import { FavoriteToggle } from "@/components/favorite-toggle";
@@ -38,6 +39,7 @@ import {
   DoctorStatusButtons,
   PatientCancelButton,
   PatientRescheduleControl,
+  PayoutDetailsForm,
   SlotCreateForm,
   SlotToggleButton,
 } from "@/components/dashboard-forms";
@@ -514,6 +516,9 @@ export default async function DashboardPage() {
   const doctorId = await getDoctorIdByUser(session.userId);
   const bookings = doctorId ? await getDoctorBookings(doctorId) : [];
   const mySlots = doctorId ? await getDoctorSlotsForManage(doctorId) : [];
+  // Doctor payout details (weekly settlement): loaded by the
+  // session's own doctorId, so a doctor only ever sees their own.
+  const payout = doctorId ? await getPayoutDetails(doctorId) : null;
   // Day 4 Stage B: paid amounts per booking, so a doctor's cancel
   // dialog states the refund (or its absence) truthfully.
   const paidAmounts = await getPaidPaymentsForAppointments(
@@ -858,6 +863,10 @@ export default async function DashboardPage() {
           Paid bookings — the money patients have paid for
           appointments with you.
         </p>
+        <p className="mt-3 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm font-medium text-teal-900">
+          Payments for your completed appointments are settled every
+          week.
+        </p>
         {earningsEntries.length === 0 ? (
           <Card className="mt-4 border-dashed border-rose-300 bg-white/70">
             <CardContent className="pt-6">
@@ -903,6 +912,26 @@ export default async function DashboardPage() {
             ))}
           </div>
         )}
+
+        <h2 className="mt-12 flex items-center gap-2 text-2xl font-bold">
+          <span className="h-2.5 w-2.5 rounded-full bg-teal-600" />
+          Payout details
+        </h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Where your weekly settlements go. Only you see this —
+          patients never see payout details.
+        </p>
+        <Card className="mt-4 border-2 border-teal-200 bg-gradient-to-br from-white to-teal-50 shadow-md">
+          <CardContent className="pt-6">
+            <PayoutDetailsForm
+              upiId={payout?.upiId ?? null}
+              ifsc={payout?.ifsc ?? null}
+              accountHolder={payout?.accountHolder ?? null}
+              maskedAccountNumber={payout?.maskedAccountNumber ?? null}
+              hasDetails={payout?.hasDetails ?? false}
+            />
+          </CardContent>
+        </Card>
 
         <h2
           id="availability"

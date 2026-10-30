@@ -69,6 +69,16 @@ const DDL = [
     consultation_fee NUMERIC(10, 2),
     is_approved BOOLEAN NOT NULL DEFAULT FALSE
   )`,
+  // Doctor payout details (weekly settlement). Additive only, so
+  // databases created before this change pick the columns up
+  // without a migration step — same pattern as expires_at above.
+  // All four start NULL: a doctor may pay out via UPI, via bank
+  // transfer, or both, and at least one complete method is
+  // enforced in lib/services/payouts.ts, not here.
+  `ALTER TABLE doctors ADD COLUMN IF NOT EXISTS payout_upi_id VARCHAR(100)`,
+  `ALTER TABLE doctors ADD COLUMN IF NOT EXISTS payout_account_number VARCHAR(20)`,
+  `ALTER TABLE doctors ADD COLUMN IF NOT EXISTS payout_ifsc VARCHAR(11)`,
+  `ALTER TABLE doctors ADD COLUMN IF NOT EXISTS payout_account_holder VARCHAR(255)`,
   `CREATE TABLE IF NOT EXISTS specializations (
     specialization_id SERIAL PRIMARY KEY,
     doctor_id INTEGER NOT NULL REFERENCES doctors(doctor_id) ON DELETE CASCADE,
