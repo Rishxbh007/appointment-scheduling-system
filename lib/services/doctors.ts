@@ -15,6 +15,7 @@ import {
   patientFavoriteDoctors,
 } from "@/lib/db/schema";
 import { toISODate, toHHMM, isSlotInFuture, todayIST } from "@/lib/time";
+import { liveBookingCondition } from "./booking";
 
 export type DoctorListItem = {
   doctorId: number;
@@ -25,18 +26,11 @@ export type DoctorListItem = {
   specializationNames: string[];
 };
 
-/**
- * Doctor names always render with a "Dr." prefix. Seed doctors store
- * the prefix in their name, registered doctors do not, so normalize
- * at display time instead of trusting stored data. Already-prefixed
- * names pass through unchanged (no "Dr. Dr."), and names that merely
- * start with those letters (e.g. "Drake") are left alone.
- */
-export function formatDoctorName(name: string): string {
-  const trimmed = name.trim();
-  const withoutPrefix = trimmed.replace(/^dr\.(\s*|$)|^dr(\s+|$)/i, "");
-  return `Dr. ${withoutPrefix.trim()}`;
-}
+// Canonical doctor-name normalization lives in @/lib/format (pure,
+// no imports) so pages, services, and mail code share one
+// implementation. Re-exported here so existing call sites keep
+// importing from this module unchanged.
+export { formatDoctorName } from "@/lib/format";
 
 /**
  * What a patient sees for one upcoming slot. The state is derived
@@ -167,7 +161,9 @@ export async function getDoctorProfile(
     )
     .orderBy(asc(slots.date), asc(slots.startTime));
 
-  // Active bookings per slot, in one query.
+  // Live bookings per slot, in one query. A Pending hold counts
+  // only while its payment deadline has not passed (lazy expiry),
+  // so an expired hold never shows a window as fuller than it is.
   const counts = await db
     .select({
       slotId: appointments.slotId,
@@ -180,7 +176,7 @@ export async function getDoctorProfile(
           appointments.slotId,
           slotRows.map((s) => s.slotId),
         ),
-        inArray(appointments.status, ["Booked", "Confirmed"]),
+        liveBookingCondition(),
       ),
     )
     .groupBy(appointments.slotId);

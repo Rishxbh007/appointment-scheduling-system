@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDate, formatTime } from "@/lib/time";
+import { formatPaise } from "@/lib/format";
 import type { BookableSlot } from "./booking-form";
 
 function ErrorNote({ message }: { message?: string }) {
@@ -29,16 +30,19 @@ function ErrorNote({ message }: { message?: string }) {
 /**
  * Short cancellation policy. It describes only behavior the app
  * actually implements: cancelling frees the slot, and a cancelled
- * appointment cannot be restored. No fees, refunds, or deadlines
- * exist in the app, so none are stated here.
+ * appointment cannot be restored. Refund wording lives separately
+ * in each dialog (Day 4 Stage B): a paid booking's dialog states
+ * the refund starts separately, and an unpaid booking's dialog
+ * states plainly that nothing was paid, so no refund promise is
+ * ever made or implied by this policy text.
  */
 function CancellationPolicy() {
   return (
     <p className="text-xs leading-relaxed text-slate-600">
-      Cancellation policy: cancelling a Booked or Confirmed appointment
-      frees its time slot for other patients. A cancelled appointment
-      cannot be restored — to see the doctor again you would need to
-      make a new booking. Completed or already-cancelled appointments
+      Cancellation policy: cancelling an appointment frees its time
+      slot for other patients. A cancelled appointment cannot be
+      restored — to see the doctor again you would need to make a
+      new booking. Completed or already-cancelled appointments
       cannot be cancelled.
     </p>
   );
@@ -46,19 +50,25 @@ function CancellationPolicy() {
 
 /** Doctor actions for one appointment: only legal next steps shown.
  * Cancel is a two-step confirmation; Confirm/Complete stay direct
- * submits, exactly as before. */
+ * submits, exactly as before. paidAmountPaise (Day 4 Stage B) is
+ * the Paid payment's amount when the patient paid for this
+ * booking, else null: the confirm panel states the refund
+ * separately from the cancellation, and never promises a refund
+ * for an unpaid booking. */
 export function DoctorStatusButtons({
   appointmentId,
   status,
   patientName,
   dateLabel,
   timeLabel,
+  paidAmountPaise = null,
 }: {
   appointmentId: number;
   status: string;
   patientName: string;
   dateLabel: string;
   timeLabel: string;
+  paidAmountPaise?: number | null;
 }) {
   const [state, dispatch, pending] = useActionState(doctorStatusAction, {});
   const [confirmingCancel, setConfirmingCancel] = useState(false);
@@ -88,6 +98,11 @@ export function DoctorStatusButtons({
           After confirmation, this appointment will show as Cancelled
           and its time slot will be freed for other patients. This
           cannot be undone.
+        </p>
+        <p className="mt-2 text-sm text-slate-600">
+          {paidAmountPaise !== null
+            ? `This patient paid ${formatPaise(paidAmountPaise)} for this appointment. Cancelling will also start a full refund to their original payment method. The refund is tracked separately — cancelling does not mean the refund has arrived yet.`
+            : "No payment was made for this appointment, so there is nothing to refund."}
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button
@@ -157,17 +172,23 @@ export function DoctorStatusButtons({
  * appointment; only "Confirm cancellation" submits. Both panel
  * buttons disable while the action is pending, so a double click
  * cannot submit twice. After a failure the error stays visible and
- * the Cancel button stays usable for a retry. */
+ * the Cancel button stays usable for a retry. paidAmountPaise
+ * (Day 4 Stage B) is the Paid payment's amount when this booking
+ * was paid for, else null: the confirm panel states the refund
+ * separately from the cancellation, and never promises a refund
+ * for an unpaid or still-awaiting-payment booking. */
 export function PatientCancelButton({
   appointmentId,
   doctorName,
   dateLabel,
   timeLabel,
+  paidAmountPaise = null,
 }: {
   appointmentId: number;
   doctorName: string;
   dateLabel: string;
   timeLabel: string;
+  paidAmountPaise?: number | null;
 }) {
   const [state, dispatch, pending] = useActionState(patientCancelAction, {});
   const [confirming, setConfirming] = useState(false);
@@ -190,6 +211,11 @@ export function PatientCancelButton({
         </div>
         <p className="mt-2 text-sm text-slate-600">
           After confirmation, this appointment will show as Cancelled.
+        </p>
+        <p className="mt-2 text-sm text-slate-600">
+          {paidAmountPaise !== null
+            ? `Cancelling will also start a full refund of ${formatPaise(paidAmountPaise)} to your original payment method. The refund is tracked separately — cancelling does not mean the refund has arrived yet. You can follow its status in Payments & refunds on this page.`
+            : "No payment was made for this booking, so there is nothing to refund."}
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button

@@ -128,7 +128,10 @@ export default async function DoctorPage({
           </CardHeader>
           <CardContent>
             {session?.role === "Patient" ? (
-              <BookingForm slots={profile.slots} />
+              <BookingForm
+                slots={profile.slots}
+                consultationFee={profile.consultationFee}
+              />
             ) : session?.role === "Doctor" ? (
               <p className="text-sm text-slate-600">
                 You are signed in as a doctor. Doctors cannot book

@@ -90,8 +90,13 @@ const DDL = [
     slot_id INTEGER NOT NULL REFERENCES slots(slot_id) ON DELETE CASCADE,
     status VARCHAR(20) NOT NULL DEFAULT 'Booked',
     reason TEXT,
-    booked_at TIMESTAMP NOT NULL DEFAULT NOW()
+    booked_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMP
   )`,
+  // Day 4 Stage A: databases created before Stage A already have
+  // appointments without expires_at (CREATE TABLE IF NOT EXISTS
+  // never alters), so add the column idempotently.
+  `ALTER TABLE appointments ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP`,
   // Stage 5 (favorite doctors). Additive only: no existing table is
   // touched. The composite primary key is the duplicate guard — the
   // same patient cannot save the same doctor twice, even under a
@@ -102,14 +107,77 @@ const DDL = [
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     PRIMARY KEY (patient_id, doctor_id)
   )`,
+  // Day 4 Stage A (Razorpay payments). One row per payment attempt;
+  // the Razorpay ids start NULL and are filled in once Razorpay
+  // answers. A booking's payment rows cascade with it.
+  `CREATE TABLE IF NOT EXISTS payments (
+    payment_id SERIAL PRIMARY KEY,
+    appointment_id INTEGER NOT NULL REFERENCES appointments(appointment_id) ON DELETE CASCADE,
+    razorpay_order_id VARCHAR(255) UNIQUE,
+    razorpay_payment_id VARCHAR(255) UNIQUE,
+    amount_paise INTEGER NOT NULL,
+    currency VARCHAR(10) NOT NULL DEFAULT 'INR',
+    status VARCHAR(20) NOT NULL DEFAULT 'Pending',
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  )`,
+  // Day 4 Stage A webhook dedup: one row per delivered event.
+  `CREATE TABLE IF NOT EXISTS webhook_events (
+    event_id VARCHAR(255) PRIMARY KEY,
+    type VARCHAR(100) NOT NULL,
+    received_at TIMESTAMP NOT NULL DEFAULT NOW()
+  )`,
+  // Day 4 Stage B (refunds). One row per payment: the UNIQUE on
+  // payment_id is the database-level duplicate guard, so a payment
+  // can never be refunded twice even under a race. The gateway
+  // refund id is UNIQUE when present; it starts NULL (keys absent
+  // or provider failure means no gateway refund exists yet).
+  `CREATE TABLE IF NOT EXISTS refunds (
+    refund_id SERIAL PRIMARY KEY,
+    payment_id INTEGER NOT NULL UNIQUE REFERENCES payments(payment_id) ON DELETE CASCADE,
+    appointment_id INTEGER NOT NULL REFERENCES appointments(appointment_id) ON DELETE CASCADE,
+    amount_paise INTEGER NOT NULL,
+    reason TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'Initiated',
+    gateway_refund_id VARCHAR(255) UNIQUE,
+    failure_reason TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+  )`,
+  // Day 4 Stage C (notifications + reminders). The audit trail:
+  // every email attempt is a row, and reminders are rows
+  // scheduled at booking time. appointment_id is nullable in the
+  // schema for future non-booking events, but every Stage C row
+  // is booking-linked.
+  `CREATE TABLE IF NOT EXISTS notifications (
+    notification_id SERIAL PRIMARY KEY,
+    appointment_id INTEGER REFERENCES appointments(appointment_id) ON DELETE CASCADE,
+    channel VARCHAR(20) NOT NULL DEFAULT 'email',
+    event VARCHAR(50) NOT NULL,
+    recipient_email VARCHAR(255) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    body TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'Pending',
+    scheduled_at TIMESTAMP,
+    sent_at TIMESTAMP,
+    failure_reason TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  )`,
   // Double-booking guard (database level): the same patient can hold
   // at most one ACTIVE appointment on the same slot. Cancelled or
   // completed appointments do not count, so re-booking after a
   // cancellation still works. (The per-slot capacity limit,
   // max_appointments, is enforced in the booking transaction.)
+  // Day 4 Stage A: Pending joins the guard — a booking on hold
+  // awaiting payment holds its slot exactly like Booked/Confirmed,
+  // so the same patient cannot hold two live bookings on one slot.
+  // The old index is dropped and recreated so existing databases
+  // pick up the wider predicate; expired Pending rows are lazily
+  // cancelled by the booking path before insert, so a stale hold
+  // can never block a fresh booking.
+  `DROP INDEX IF EXISTS appointments_active_patient_slot_uidx`,
   `CREATE UNIQUE INDEX IF NOT EXISTS appointments_active_patient_slot_uidx
      ON appointments (patient_id, slot_id)
-     WHERE status IN ('Booked', 'Confirmed')`,
+     WHERE status IN ('Pending', 'Booked', 'Confirmed')`,
 ];
 
 let ready: Promise<void> | null = null;

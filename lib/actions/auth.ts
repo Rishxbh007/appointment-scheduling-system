@@ -33,7 +33,19 @@ import {
   randomUnusablePasswordHash,
 } from "@/lib/oauth";
 
-export type ActionState = { error?: string; success?: boolean };
+export type ActionState = {
+  error?: string;
+  success?: boolean;
+  // Day 4 Stage A: a paid booking returns the checkout details
+  // instead of redirecting, so the booking form can open Razorpay
+  // Checkout. Only ever set by bookAction's paid path.
+  payment?: {
+    appointmentId: number;
+    orderId: string;
+    amountPaise: number;
+    expiresAtIso: string;
+  };
+};
 
 function formValues(formData: FormData): Record<string, string> {
   return Object.fromEntries(

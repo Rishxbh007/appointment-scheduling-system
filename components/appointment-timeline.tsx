@@ -1,7 +1,7 @@
 // Appointment status timeline — presentational only.
 //
 // Renders the appointment's progress from its real persisted status,
-// nothing else. The app records exactly four statuses (Booked,
+// nothing else. The app records five statuses (Pending, Booked,
 // Confirmed, Cancelled, Completed) and only one real timestamp:
 // bookedAt, the moment the booking was created. There are NO recorded
 // timestamps for the Confirmed or Completed transitions, so those
@@ -22,6 +22,11 @@
 // Instead a standalone cancelled panel states the outcome, the real
 // booked date, and the scheduled time, and makes clear the
 // appointment will not continue toward completion.
+//
+// Pending appointments likewise do NOT get the step list: a booking
+// on hold awaiting payment is not on the way to completion yet.
+// They get their own standalone "Awaiting payment" panel, with the
+// payment deadline when one is known.
 
 const STEPS = ["Booked", "Confirmed", "Completed"] as const;
 
@@ -63,11 +68,27 @@ function formatBookedDate(bookedAt: Date): string {
   return `${get("weekday")}, ${get("day")} ${get("month")} ${get("year")}`;
 }
 
+/** Payment deadline as an IST date + time ("Fri, 30 Oct 2026, 3:45 PM"). */
+function formatExpiry(expiresAt: Date): string {
+  const dt = expiresAt instanceof Date ? expiresAt : new Date(expiresAt);
+  return dt.toLocaleString("en-GB", {
+    timeZone: "Asia/Kolkata",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 export function AppointmentTimeline({
   status,
   bookedAt,
   dateLabel,
   timeLabel,
+  expiresAt,
 }: {
   status: string;
   bookedAt: Date;
@@ -75,8 +96,34 @@ export function AppointmentTimeline({
   dateLabel: string;
   /** Already formatted with formatTime, e.g. "10:00 AM – 11:00 AM". */
   timeLabel: string;
+  /** Payment deadline of a Pending booking, when one is known. */
+  expiresAt?: Date | null;
 }) {
   const scheduled = `${dateLabel}, ${timeLabel}`;
+
+  if (status === "Pending") {
+    return (
+      <div
+        aria-label={`Awaiting payment, scheduled for ${scheduled}`}
+        className="border-t border-border px-6 py-4"
+      >
+        <p className="text-sm font-semibold">Awaiting payment</p>
+        <p className="mt-1 text-sm text-slate-600">
+          This booking is on hold and is not confirmed yet. Complete
+          the payment to confirm it.
+        </p>
+        {expiresAt && (
+          <p className="mt-2 text-sm text-slate-600">
+            Complete payment by {formatExpiry(expiresAt)} or the hold
+            will be released.
+          </p>
+        )}
+        <p className="mt-2 text-sm text-slate-600">
+          Scheduled for {scheduled}
+        </p>
+      </div>
+    );
+  }
 
   if (status === "Cancelled") {
     return (

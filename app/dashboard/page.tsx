@@ -12,9 +12,17 @@ import {
   getDoctorBookings,
   getDoctorSlotsForManage,
 } from "@/lib/services/booking";
+import { getPendingPaymentsForPatient } from "@/lib/services/payments";
+import {
+  getPaidPaymentsForAppointments,
+} from "@/lib/services/payments";
+import {
+  getPaymentHistoryForPatient,
+} from "@/lib/services/refunds";
 import { getDoctorProfile, formatDoctorName } from "@/lib/services/doctors";
 import { listFavoriteDoctors } from "@/lib/services/doctors";
 import { FavoriteToggle } from "@/components/favorite-toggle";
+import { RefundRetryButton } from "@/components/refund-retry-button";
 import type { BookableSlot } from "@/components/booking-form";
 import { Badge } from "@/components/ui/badge";
 import { AppointmentTimeline } from "@/components/appointment-timeline";
@@ -34,8 +42,28 @@ import {
   SlotToggleButton,
 } from "@/components/dashboard-forms";
 import { formatDate, formatTime, todayIST } from "@/lib/time";
+import { formatPaise } from "@/lib/format";
+import { PaymentCheckout } from "@/components/payment-checkout";
 
 export const dynamic = "force-dynamic";
+
+/** Payment statuses in plain words (the Badge is appointment-only). */
+function paymentStatusLabel(status: string): string {
+  switch (status) {
+    case "Paid":
+      return "Paid";
+    case "Pending":
+      return "Awaiting payment";
+    case "Failed":
+      return "Payment failed";
+    case "Abandoned":
+      return "Payment abandoned";
+    case "Expired":
+      return "Payment expired";
+    default:
+      return status;
+  }
+}
 
 export default async function DashboardPage() {
   const session = await getSession();
@@ -47,6 +75,28 @@ export default async function DashboardPage() {
   if (session.role === "Patient") {
     const patientId = await getPatientIdByUser(session.userId);
     const bookings = patientId ? await getPatientBookings(patientId) : [];
+    const pendingPayments = patientId
+      ? await getPendingPaymentsForPatient(patientId)
+      : new Map();
+    const paymentHistory = patientId
+      ? await getPaymentHistoryForPatient(patientId)
+      : [];
+    // Paid amount per appointment, for the cancel dialogs (Day 4
+    // Stage B): a booking shows its refund line only when it
+    // actually has a Paid payment; anything else states plainly
+    // that nothing was paid.
+    const paidAmountByAppointment = new Map<number, number>();
+    for (const entry of paymentHistory) {
+      if (
+        entry.paymentStatus === "Paid" &&
+        !paidAmountByAppointment.has(entry.appointmentId)
+      ) {
+        paidAmountByAppointment.set(
+          entry.appointmentId,
+          entry.amountPaise,
+        );
+      }
+    }
     const favorites = patientId
       ? await listFavoriteDoctors(patientId)
       : [];
@@ -118,6 +168,44 @@ export default async function DashboardPage() {
                           doctorName={formatDoctorName(b.doctorName)}
                           dateLabel={formatDate(b.slotDate)}
                           timeLabel={`${formatTime(b.slotStart)} – ${formatTime(b.slotEnd)}`}
+                          paidAmountPaise={
+                            paidAmountByAppointment.get(
+                              b.appointmentId,
+                            ) ?? null
+                          }
+                        />
+                      </div>
+                    )}
+                    {b.status === "Pending" && (
+                      <div className="flex flex-wrap items-start gap-3">
+                        {(() => {
+                          const pay = pendingPayments.get(
+                            b.appointmentId,
+                          );
+                          if (!pay) return null;
+                          return (
+                            <PaymentCheckout
+                              appointmentId={b.appointmentId}
+                              orderId={
+                                pay.status === "Pending"
+                                  ? pay.orderId
+                                  : null
+                              }
+                              amountPaise={pay.amountPaise}
+                              expiresAtIso={b.expiresAt?.toISOString()}
+                            />
+                          );
+                        })()}
+                        <PatientCancelButton
+                          appointmentId={b.appointmentId}
+                          doctorName={formatDoctorName(b.doctorName)}
+                          dateLabel={formatDate(b.slotDate)}
+                          timeLabel={`${formatTime(b.slotStart)} – ${formatTime(b.slotEnd)}`}
+                          paidAmountPaise={
+                            paidAmountByAppointment.get(
+                              b.appointmentId,
+                            ) ?? null
+                          }
                         />
                       </div>
                     )}
@@ -128,7 +216,79 @@ export default async function DashboardPage() {
                   bookedAt={b.bookedAt}
                   dateLabel={formatDate(b.slotDate)}
                   timeLabel={`${formatTime(b.slotStart)} – ${formatTime(b.slotEnd)}`}
+                  expiresAt={b.expiresAt ?? undefined}
                 />
+              </Card>
+            ))}
+          </div>
+        )}
+
+        <h2 className="mt-10 text-xl font-bold">Payments &amp; refunds</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Every payment you made, with its refund status shown
+          separately. Cancelling an appointment never means the
+          refund has arrived — only a processed refund does.
+        </p>
+        {paymentHistory.length === 0 ? (
+          <p className="mt-2 text-slate-600">
+            No payments yet. Free bookings and bookings still
+            awaiting payment do not appear here.
+          </p>
+        ) : (
+          <div className="mt-4 grid gap-4">
+            {paymentHistory.map((entry) => (
+              <Card key={entry.paymentId}>
+                <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
+                  <div>
+                    <p className="font-medium">
+                      {formatDoctorName(entry.doctorName)}
+                    </p>
+                    <p className="text-sm text-slate-600">
+                      {formatPaise(entry.amountPaise)} ·{" "}
+                      {paymentStatusLabel(entry.paymentStatus)} ·{" "}
+                      {formatDate(
+                        entry.paidAt.toISOString().slice(0, 10),
+                      )}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Appointment: {entry.appointmentStatus}
+                    </p>
+                  </div>
+                  <div className="flex max-w-sm flex-col items-end gap-2 text-right">
+                    {entry.refund === null ? (
+                      entry.paymentStatus === "Paid" &&
+                      entry.appointmentStatus === "Cancelled" ? (
+                        <p className="text-sm text-slate-600">
+                          Refund status not recorded.
+                        </p>
+                      ) : null
+                    ) : entry.refund.status === "Processed" ? (
+                      <p className="text-sm text-slate-600">
+                        Refund processed — the payment provider has
+                        completed the full refund.
+                      </p>
+                    ) : entry.refund.status === "Initiated" ? (
+                      <p className="text-sm text-slate-600">
+                        Refund initiated — the full amount is being
+                        refunded, but it has not completed yet.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-sm text-slate-600">
+                          Refund failed
+                          {entry.refund.failureReason
+                            ? ` — ${entry.refund.failureReason}`
+                            : ""}
+                          . The appointment stays cancelled; only the
+                          refund needs another try.
+                        </p>
+                        <RefundRetryButton
+                          refundId={entry.refund.refundId}
+                        />
+                      </>
+                    )}
+                  </div>
+                </CardContent>
               </Card>
             ))}
           </div>
@@ -188,6 +348,11 @@ export default async function DashboardPage() {
   const doctorId = await getDoctorIdByUser(session.userId);
   const bookings = doctorId ? await getDoctorBookings(doctorId) : [];
   const mySlots = doctorId ? await getDoctorSlotsForManage(doctorId) : [];
+  // Day 4 Stage B: paid amounts per booking, so a doctor's cancel
+  // dialog states the refund (or its absence) truthfully.
+  const paidAmounts = await getPaidPaymentsForAppointments(
+    bookings.map((b) => b.appointmentId),
+  );
   const today = todayIST();
   const upcomingSlots = mySlots.filter((s) => s.date >= today);
 
@@ -229,6 +394,10 @@ export default async function DashboardPage() {
                     patientName={b.patientName}
                     dateLabel={formatDate(b.slotDate)}
                     timeLabel={`${formatTime(b.slotStart)} – ${formatTime(b.slotEnd)}`}
+                    paidAmountPaise={
+                      paidAmounts.get(b.appointmentId)?.amountPaise ??
+                      null
+                    }
                   />
                 </div>
               </CardContent>
@@ -237,6 +406,7 @@ export default async function DashboardPage() {
                 bookedAt={b.bookedAt}
                 dateLabel={formatDate(b.slotDate)}
                 timeLabel={`${formatTime(b.slotStart)} – ${formatTime(b.slotEnd)}`}
+                expiresAt={b.expiresAt ?? undefined}
               />
             </Card>
           ))}

@@ -9,8 +9,11 @@
 //      (patient_id, slot_id) for active statuses (see lib/db/index.ts)
 //      makes a double booking impossible even under a race.
 // Status changes are ownership-checked and follow one allowed path:
-//   Booked -> Confirmed -> Completed, with cancellation allowed from
-//   Booked or Confirmed. Nothing else is a legal transition.
+//   Pending -> Booked (verified payment) or Cancelled (patient
+//   cancel or expiry), then Booked -> Confirmed -> Completed, with
+//   cancellation allowed from Booked or Confirmed. Nothing else is
+//   a legal transition. Doctors never cancel a Pending booking:
+//   the hold belongs to the patient until it is paid or expires.
 
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -20,6 +23,8 @@ import {
   patients,
   slots,
   appointments,
+  payments,
+  notifications,
 } from "@/lib/db/schema";
 import {
   toISODate,
@@ -27,10 +32,31 @@ import {
   isSlotInFuture,
   todayIST,
 } from "@/lib/time";
+import {
+  buildReminderContent,
+  reminderScheduledAt,
+} from "./notifications";
+import { formatDoctorName } from "@/lib/format";
 
-export const ACTIVE_STATUSES = ["Booked", "Confirmed"] as const;
+// A Pending booking holds its slot exactly like Booked/Confirmed
+// until it is paid, cancelled, or expired.
+export const ACTIVE_STATUSES = ["Booked", "Confirmed", "Pending"] as const;
+
+/**
+ * The capacity/duplicate test for a booking. Booked and Confirmed
+ * always count; a Pending booking counts only while its payment
+ * deadline has not passed — an expired hold is treated as gone
+ * (lazy expiry), so a stale hold never blocks a slot or a
+ * re-booking. The sweep (lib/services/payments.ts) later cancels
+ * expired holds outright; this condition is what keeps the app
+ * correct between sweeps.
+ */
+export function liveBookingCondition() {
+  return sql`(${appointments.status} IN ('Booked', 'Confirmed') OR (${appointments.status} = 'Pending' AND ${appointments.expiresAt} > NOW()))`;
+}
 
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+  Pending: ["Cancelled"],
   Booked: ["Confirmed", "Cancelled"],
   Confirmed: ["Cancelled", "Completed"],
   Cancelled: [],
@@ -38,14 +64,58 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
 };
 
 /**
+ * A consultation fee (NUMERIC comes back as a string) in integer
+ * paise, or null when there is no usable fee. Math.round guards
+ * against binary-float dust (999.99 * 100 is 99998.999...).
+ */
+export function feeToPaise(
+  fee: string | number | null | undefined,
+): number | null {
+  if (fee === null || fee === undefined) return null;
+  const n = typeof fee === "number" ? fee : Number.parseFloat(fee);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const paise = Math.round(n * 100);
+  return paise > 0 ? paise : null;
+}
+
+/** The consultation fee of a slot's doctor, in paise, or null. */
+export async function getSlotDoctorFee(
+  slotId: number,
+): Promise<number | null> {
+  const [slot] = await db
+    .select()
+    .from(slots)
+    .where(eq(slots.slotId, slotId));
+  if (!slot) return null;
+  const [doctor] = await db
+    .select()
+    .from(doctors)
+    .where(eq(doctors.doctorId, slot.doctorId));
+  if (!doctor) return null;
+  return feeToPaise(doctor.consultationFee);
+}
+
+/**
  * Book an appointment. Throws an Error with a user-facing message
  * when the booking cannot be made.
+ *
+ * Options: status "Pending" creates a payment hold instead of a
+ * confirmed booking (Day 4 Stage A, pay before confirmation) — the
+ * hold carries expiresAt and, when amountPaise is given, a Pending
+ * payment row in the same transaction. Without options the call
+ * is exactly today's immediate-Booked flow.
  */
 export async function bookAppointment(
   patientId: number,
   slotId: number,
   reason: string,
+  options: {
+    status?: "Booked" | "Pending";
+    expiresAt?: Date;
+    amountPaise?: number;
+  } = {},
 ) {
+  const status = options.status ?? "Booked";
   return db.transaction(async (tx) => {
     // Lock the slot row so two concurrent bookings cannot both pass
     // the capacity check.
@@ -64,13 +134,48 @@ export async function bookAppointment(
       throw new Error("That time slot is in the past.");
     }
 
+    // Lazy expiry: this patient's own expired holds on this slot
+    // are cancelled (with their payment rows) before any check, so
+    // the partial unique index can never block a fresh booking on
+    // a hold that already lapsed.
+    const stale = await tx.execute(
+      sql`UPDATE appointments SET status = 'Cancelled'
+          WHERE patient_id = ${patientId} AND slot_id = ${slotId}
+            AND status = 'Pending' AND expires_at <= NOW()
+          RETURNING appointment_id`,
+    );
+    const staleIds = (stale.rows as Record<string, unknown>[])
+      .map((r) => r.appointment_id)
+      .filter((id): id is number => typeof id === "number");
+    if (staleIds.length > 0) {
+      await tx.execute(
+        sql`UPDATE payments SET status = 'Expired'
+            WHERE status = 'Pending' AND appointment_id IN (${sql.join(
+              staleIds.map((id) => sql`${id}`),
+              sql`, `,
+            )})`,
+      );
+      // Day 4 Stage C: stale holds take their reminders with
+      // them, so no dead hold is ever reminded.
+      await tx
+        .update(notifications)
+        .set({ status: "Cancelled" })
+        .where(
+          and(
+            inArray(notifications.appointmentId, staleIds),
+            eq(notifications.event, "reminder"),
+            eq(notifications.status, "Pending"),
+          ),
+        );
+    }
+
     const countRows = await tx
       .select({ n: sql<number>`count(*)` })
       .from(appointments)
       .where(
         and(
           eq(appointments.slotId, slotId),
-          inArray(appointments.status, [...ACTIVE_STATUSES]),
+          liveBookingCondition(),
         ),
       );
     const booked = Number(countRows[0]?.n ?? 0);
@@ -79,7 +184,7 @@ export async function bookAppointment(
       throw new Error("That time slot is fully booked.");
     }
 
-    // Same patient, same slot, already holding an active booking?
+    // Same patient, same slot, already holding a live booking?
     const existing = await tx
       .select({ id: appointments.appointmentId })
       .from(appointments)
@@ -87,7 +192,7 @@ export async function bookAppointment(
         and(
           eq(appointments.patientId, patientId),
           eq(appointments.slotId, slotId),
-          inArray(appointments.status, [...ACTIVE_STATUSES]),
+          liveBookingCondition(),
         ),
       );
     if (existing.length > 0) {
@@ -107,10 +212,63 @@ export async function bookAppointment(
           patientId,
           doctorId: slot.doctorId,
           slotId,
-          status: "Booked",
+          status,
           reason,
+          expiresAt: status === "Pending" ? options.expiresAt : undefined,
         })
         .returning();
+      if (status === "Pending" && options.amountPaise !== undefined) {
+        await tx.insert(payments).values({
+          appointmentId: created.appointmentId,
+          amountPaise: options.amountPaise,
+          currency: "INR",
+          status: "Pending",
+        });
+      }
+      // Day 4 Stage C: the reminder row, scheduled 24h before the
+      // slot starts. Created for every new booking — free or
+      // Pending hold alike. The cron only sends for
+      // Booked/Confirmed appointments, so a hold's reminder waits
+      // until the hold is paid, and the cancel/sweep paths kill
+      // it if the booking dies first. A missing doctor/patient
+      // row cannot happen (foreign keys), but if it did, the
+      // booking must still succeed — so a skipped reminder is
+      // logged, never thrown.
+      const [patientUser] = await tx
+        .select({ email: users.email })
+        .from(patients)
+        .innerJoin(users, eq(patients.userId, users.userId))
+        .where(eq(patients.patientId, patientId));
+      const [doctorUser] = await tx
+        .select({ name: users.name })
+        .from(doctors)
+        .innerJoin(users, eq(doctors.userId, users.userId))
+        .where(eq(doctors.doctorId, slot.doctorId));
+      if (patientUser && doctorUser) {
+        const slotDate = toISODate(slot.date);
+        const slotStart = toHHMM(slot.startTime);
+        const slotEnd = toHHMM(slot.endTime);
+        const content = buildReminderContent(
+          formatDoctorName(doctorUser.name),
+          slotDate,
+          slotStart,
+          slotEnd,
+        );
+        await tx.insert(notifications).values({
+          appointmentId: created.appointmentId,
+          channel: "email",
+          event: "reminder",
+          recipientEmail: patientUser.email,
+          subject: content.subject,
+          body: content.body,
+          status: "Pending",
+          scheduledAt: reminderScheduledAt(slotDate, slotStart),
+        });
+      } else {
+        console.error(
+          `Reminder skipped for appointment ${created.appointmentId}: patient or doctor row missing.`,
+        );
+      }
       return created;
     } catch (err) {
       // The partial unique index fired (race that slipped past the
@@ -194,13 +352,47 @@ export async function rescheduleAppointment(
       throw new Error("That time slot is in the past.");
     }
 
+    // Lazy expiry, as in bookAppointment: the patient's own expired
+    // holds on the new slot are cancelled first, so the partial
+    // unique index cannot block the move on a lapsed hold.
+    const stale = await tx.execute(
+      sql`UPDATE appointments SET status = 'Cancelled'
+          WHERE patient_id = ${patientId} AND slot_id = ${newSlotId}
+            AND status = 'Pending' AND expires_at <= NOW()
+          RETURNING appointment_id`,
+    );
+    const staleIds = (stale.rows as Record<string, unknown>[])
+      .map((r) => r.appointment_id)
+      .filter((id): id is number => typeof id === "number");
+    if (staleIds.length > 0) {
+      await tx.execute(
+        sql`UPDATE payments SET status = 'Expired'
+            WHERE status = 'Pending' AND appointment_id IN (${sql.join(
+              staleIds.map((id) => sql`${id}`),
+              sql`, `,
+            )})`,
+      );
+      // Day 4 Stage C: stale holds take their reminders with
+      // them, so no dead hold is ever reminded.
+      await tx
+        .update(notifications)
+        .set({ status: "Cancelled" })
+        .where(
+          and(
+            inArray(notifications.appointmentId, staleIds),
+            eq(notifications.event, "reminder"),
+            eq(notifications.status, "Pending"),
+          ),
+        );
+    }
+
     const countRows = await tx
       .select({ n: sql<number>`count(*)` })
       .from(appointments)
       .where(
         and(
           eq(appointments.slotId, newSlotId),
-          inArray(appointments.status, [...ACTIVE_STATUSES]),
+          liveBookingCondition(),
         ),
       );
     const booked = Number(countRows[0]?.n ?? 0);
@@ -209,7 +401,7 @@ export async function rescheduleAppointment(
       throw new Error("That time slot is fully booked.");
     }
 
-    // Same patient, same new slot, already holding an active booking?
+    // Same patient, same new slot, already holding a live booking?
     const existing = await tx
       .select({ id: appointments.appointmentId })
       .from(appointments)
@@ -217,7 +409,7 @@ export async function rescheduleAppointment(
         and(
           eq(appointments.patientId, patientId),
           eq(appointments.slotId, newSlotId),
-          inArray(appointments.status, [...ACTIVE_STATUSES]),
+          liveBookingCondition(),
         ),
       );
     if (existing.length > 0) {
@@ -228,20 +420,35 @@ export async function rescheduleAppointment(
       // Re-check the status in the UPDATE itself: if a concurrent
       // cancellation landed after the checks above, this matches no
       // row and the move is refused instead of moving a cancelled
-      // appointment to a new slot.
+      // appointment to a new slot. Rescheduling stays
+      // Booked/Confirmed-only: a Pending hold is never moved, even
+      // though Pending counts toward capacity elsewhere.
       const [updated] = await tx
         .update(appointments)
         .set({ slotId: newSlotId })
         .where(
           and(
             eq(appointments.appointmentId, appointmentId),
-            inArray(appointments.status, [...ACTIVE_STATUSES]),
+            inArray(appointments.status, ["Booked", "Confirmed"]),
           ),
         )
         .returning();
       if (!updated) {
         throw new Error("This appointment can no longer be rescheduled.");
       }
+      // Day 4 Stage C: the reminder follows the move — new start
+      // minus 24h, only while still Pending (a sent reminder is
+      // history, and a cancelled one stays cancelled).
+      await tx
+        .update(notifications)
+        .set({ scheduledAt: reminderScheduledAt(date, startTime) })
+        .where(
+          and(
+            eq(notifications.appointmentId, appointmentId),
+            eq(notifications.event, "reminder"),
+            eq(notifications.status, "Pending"),
+          ),
+        );
       return updated;
     } catch (err) {
       // The partial unique index fired (race that slipped past the
@@ -262,6 +469,7 @@ export type BookingView = {
   status: string;
   reason: string | null;
   bookedAt: Date;
+  expiresAt: Date | null;
   slotId: number;
   slotDate: string;
   slotStart: string;
@@ -281,6 +489,7 @@ export async function getPatientBookings(
       status: appointments.status,
       reason: appointments.reason,
       bookedAt: appointments.bookedAt,
+      expiresAt: appointments.expiresAt,
       slotId: appointments.slotId,
       slotDate: slots.date,
       slotStart: slots.startTime,
@@ -299,6 +508,7 @@ export async function getPatientBookings(
     status: r.status,
     reason: r.reason,
     bookedAt: r.bookedAt,
+    expiresAt: r.expiresAt,
     slotId: r.slotId,
     slotDate: toISODate(r.slotDate),
     slotStart: toHHMM(r.slotStart),
@@ -319,6 +529,7 @@ export async function getDoctorBookings(
       status: appointments.status,
       reason: appointments.reason,
       bookedAt: appointments.bookedAt,
+      expiresAt: appointments.expiresAt,
       slotId: appointments.slotId,
       slotDate: slots.date,
       slotStart: slots.startTime,
@@ -336,6 +547,7 @@ export async function getDoctorBookings(
     status: r.status,
     reason: r.reason,
     bookedAt: r.bookedAt,
+    expiresAt: r.expiresAt,
     slotId: r.slotId,
     slotDate: toISODate(r.slotDate),
     slotStart: toHHMM(r.slotStart),
@@ -376,6 +588,15 @@ export async function changeAppointmentStatus(
   ) {
     throw new Error("Patients can only cancel their own bookings.");
   }
+  // A Pending hold belongs to the patient until it is paid or
+  // expires: a doctor cannot cancel it (the doctor dashboard
+  // offers no action on Pending cards either; this guards forged
+  // requests). Expiry is handled by the sweep, not by this path.
+  if (appt.status === "Pending" && actor.patientId === undefined) {
+    throw new Error(
+      "Only the patient can cancel a booking that is still awaiting payment.",
+    );
+  }
 
   const allowed = ALLOWED_TRANSITIONS[appt.status] ?? [];
   if (!allowed.includes(newStatus)) {
@@ -389,6 +610,26 @@ export async function changeAppointmentStatus(
     .set({ status: newStatus })
     .where(eq(appointments.appointmentId, appointmentId))
     .returning();
+  if (newStatus === "Cancelled" || newStatus === "Completed") {
+    // Day 4 Stage C: a dead appointment is never reminded. The
+    // cron's own guard would skip it anyway, but killing the
+    // reminder here keeps the audit trail truthful. Best-effort:
+    // a failure here must never undo the status change.
+    try {
+      await db
+        .update(notifications)
+        .set({ status: "Cancelled" })
+        .where(
+          and(
+            eq(notifications.appointmentId, appointmentId),
+            eq(notifications.event, "reminder"),
+            eq(notifications.status, "Pending"),
+          ),
+        );
+    } catch (err) {
+      console.error("Cancelling reminders failed:", err);
+    }
+  }
   return updated;
 }
 
@@ -423,7 +664,7 @@ export async function getDoctorSlotsForManage(
           appointments.slotId,
           slotRows.map((s) => s.slotId),
         ),
-        inArray(appointments.status, [...ACTIVE_STATUSES]),
+        liveBookingCondition(),
       ),
     )
     .groupBy(appointments.slotId);
@@ -494,7 +735,7 @@ export async function setSlotActive(
       .where(
         and(
           eq(appointments.slotId, slotId),
-          inArray(appointments.status, [...ACTIVE_STATUSES]),
+          liveBookingCondition(),
           sql`${slots.date} >= ${todayIST()}`,
         ),
       );
