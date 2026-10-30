@@ -25,7 +25,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SlotPicker, type SlotChoice } from "@/components/slot-picker";
 import { formatDate, formatTime } from "@/lib/time";
-import { PaymentCheckout } from "@/components/payment-checkout";
+import {
+  PaymentCheckout,
+  type CheckoutPrefill,
+} from "@/components/payment-checkout";
 import type { DoctorSlotView } from "@/lib/services/doctors";
 
 export type BookableSlot = Pick<
@@ -77,11 +80,14 @@ export function BookingForm({
   slots,
   consultationFee,
   doctorName,
+  prefill,
 }: {
   slots: BookableSlot[];
   /** The doctor's fee as stored (e.g. "500.00"), or null. */
   consultationFee?: string | null;
   doctorName?: string;
+  /** Signed-in patient's own details for checkout prefill. */
+  prefill?: CheckoutPrefill;
 }) {
   const [state, dispatch, pending] = useActionState(bookAction, {});
   const [step, setStep] = useState(0);
@@ -112,6 +118,7 @@ export function BookingForm({
           orderId={state.payment.orderId}
           amountPaise={state.payment.amountPaise}
           expiresAtIso={state.payment.expiresAtIso}
+          prefill={prefill}
         />
       </div>
     );

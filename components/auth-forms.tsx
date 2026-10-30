@@ -206,8 +206,6 @@ function PasswordField({
   hasError,
   autoComplete,
   inputClassName,
-  toggleClassName,
-  toggleIcon,
   placeholder,
 }: {
   id: string;
@@ -219,8 +217,6 @@ function PasswordField({
   hasError: boolean;
   autoComplete: string;
   inputClassName?: string;
-  toggleClassName?: string;
-  toggleIcon?: boolean;
   // Optional: only the stepped register form passes one (it replaces
   // the "At least 6 characters." note line to save vertical space).
   // Callers that omit it (sign-in) render exactly as before.
@@ -246,39 +242,37 @@ function PasswordField({
           "h-12 rounded-xl border-slate-300 pr-16 focus:ring-teal-600"
         }
       />
-      <Button
+      {/* Premium eye-icon toggle, inside the field: a round,
+        well-shaped button with a generous tap target and no text
+        label — the old solid "Show"/"Hide" button looked like a
+        second submit button. Icon-only, labelled for screen
+        readers, with a visible focus ring. */}
+      <button
         type="button"
         onClick={() => setVisible((v) => !v)}
         aria-label={visible ? "Hide password" : "Show password"}
         aria-pressed={visible}
-        className={
-          toggleClassName ??
-          "absolute top-1/2 right-3 -translate-y-1/2 rounded text-xs font-medium text-slate-600 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
-        }
+        title={visible ? "Hide password" : "Show password"}
+        className="absolute top-1/2 right-2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
       >
-        <span className="inline-flex items-center gap-1.5">
-          {toggleIcon && (
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              {visible ? (
-                <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61M9.88 9.88 2 2" />
-              ) : (
-                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
-              )}
-            </svg>
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          {visible ? (
+            <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61M9.88 9.88 2 2" />
+          ) : (
+            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
           )}
-          {visible ? "Hide" : "Show"}
-        </span>
-      </Button>
+        </svg>
+      </button>
     </div>
   );
 }
@@ -706,9 +700,7 @@ export function LoginForm({
                   errorId="password-error"
                   hasError={Boolean(errors.password)}
                   autoComplete="current-password"
-                  inputClassName="h-12 rounded-xl border-border pr-16 focus-visible:ring-brand-600"
-                  toggleClassName="absolute top-1/2 right-3 -translate-y-1/2 rounded text-xs font-medium text-ink-soft hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
-                  toggleIcon
+                  inputClassName="h-12 rounded-xl border-border pr-14 focus-visible:ring-brand-600"
                 />
                 <FieldError message={errors.password} id="password-error" />
               </div>

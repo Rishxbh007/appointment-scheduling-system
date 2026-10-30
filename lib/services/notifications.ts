@@ -24,6 +24,14 @@
 //     expiry cancel holds silently (they are abandoned holds, not
 //     user cancellations). Only user/doctor-initiated cancels
 //     produce a booking_cancelled email.
+//   * Doctor recipients: booking_created, booking_cancelled and
+//     booking_rescheduled email BOTH the patient and the doctor,
+//     one notification row per recipient, so the audit trail stays
+//     per-recipient. The doctor's mail carries the patient name,
+//     date/time and reason — never refund wording (money is the
+//     patient's). Payment and refund events stay patient-only, and
+//     reminders stay patient-only; no event ever mails the patient
+//     twice.
 //   * No backfill: reminders are created only by bookAppointment,
 //     i.e. for bookings made after Stage C lands. Event emails,
 //     by contrast, fire for events on any booking from now on.
@@ -101,7 +109,9 @@ export type AppointmentMailContext = {
   appointmentId: number;
   status: string;
   patientEmail: string;
+  patientName: string;
   doctorDisplayName: string;
+  doctorEmail: string;
   slotDate: string;
   slotStart: string;
   slotEnd: string;
@@ -119,12 +129,12 @@ export async function getAppointmentMailContext(
     .where(eq(appointments.appointmentId, appointmentId));
   if (!appt) return null;
   const [patientUser] = await db
-    .select({ email: users.email })
+    .select({ email: users.email, name: users.name })
     .from(patients)
     .innerJoin(users, eq(patients.userId, users.userId))
     .where(eq(patients.patientId, appt.patientId));
   const [doctorUser] = await db
-    .select({ name: users.name })
+    .select({ name: users.name, email: users.email })
     .from(doctors)
     .innerJoin(users, eq(doctors.userId, users.userId))
     .where(eq(doctors.doctorId, appt.doctorId));
@@ -137,7 +147,9 @@ export async function getAppointmentMailContext(
     appointmentId: appt.appointmentId,
     status: appt.status,
     patientEmail: patientUser.email,
+    patientName: patientUser.name,
     doctorDisplayName: formatDoctorName(doctorUser.name),
+    doctorEmail: doctorUser.email,
     slotDate: toISODate(slot.date),
     slotStart: toHHMM(slot.startTime),
     slotEnd: toHHMM(slot.endTime),
@@ -301,6 +313,87 @@ export function buildEventContent(
   }
 }
 
+/** Events that email the doctor as well as the patient. Every
+ * other event is patient-only: payment and refund mail is the
+ * patient's money, and reminders stay patient-only. */
+const DOCTOR_RECIPIENT_EVENTS = new Set([
+  "booking_created",
+  "booking_cancelled",
+  "booking_rescheduled",
+]);
+
+/** Subject + body for the DOCTOR's copy of an event email. The
+ * patient name, date/time and reason are the point of the mail;
+ * refund wording is deliberately absent — a refund belongs to
+ * the patient's mail, never the doctor's. */
+export function buildDoctorEventContent(
+  event: string,
+  ctx: AppointmentMailContext,
+  extra: EventExtra = {},
+): { subject: string; body: string } {
+  const when = whenLabel(ctx);
+  switch (event) {
+    case "booking_created":
+      return {
+        subject: `New appointment booked by ${ctx.patientName}`,
+        body: [
+          "Hi,",
+          "",
+          `${ctx.patientName} has booked an appointment with you.`,
+          "",
+          `When: ${when}`,
+          ...(ctx.reason ? [`Reason given: ${ctx.reason}`] : []),
+          "",
+          "You can confirm or manage it from your CareBook dashboard.",
+          "",
+          "— CareBook",
+        ].join("\n"),
+      };
+    case "booking_cancelled":
+      return {
+        subject: `Appointment with ${ctx.patientName} cancelled`,
+        body: [
+          "Hi,",
+          "",
+          `The appointment with ${ctx.patientName} on ${when} has been cancelled.`,
+          "",
+          "The time slot is free again for other patients.",
+          "",
+          "— CareBook",
+        ].join("\n"),
+      };
+    case "booking_rescheduled":
+      return {
+        subject: `Appointment with ${ctx.patientName} moved`,
+        body: [
+          "Hi,",
+          "",
+          `The appointment with ${ctx.patientName} has been rescheduled.`,
+          "",
+          ...(extra.previousLabel ? [`Was: ${extra.previousLabel}`, ""] : []),
+          `Now: ${when}`,
+          "",
+          "Only the time has changed — everything else about the booking stays the same.",
+          "",
+          "— CareBook",
+        ].join("\n"),
+      };
+    default:
+      return {
+        subject: "CareBook appointment update",
+        body: [
+          "Hi,",
+          "",
+          `There is an update about your appointment with ${ctx.patientName} on ${when}.`,
+          "",
+          "Visit your CareBook dashboard for details.",
+          "",
+          "— CareBook",
+        ].join("\n"),
+      };
+  }
+}
+
 /**
  * Create the audit row for one event email and attempt the send.
  * Best-effort by contract: never throws. A missing mail context,
@@ -308,25 +401,16 @@ export function buildEventContent(
  * (Failed + real reason) or logged — the triggering action is
  * never affected.
  */
-export async function sendEventEmail(
+/** One recipient's audit row + send attempt. Never throws: a
+ * failure is recorded on the row (or logged) and the row is
+ * returned, so one recipient's failure never blocks the other. */
+async function sendSingleEmail(
   appointmentId: number,
   event: string,
-  extra: EventExtra = {},
+  recipientEmail: string,
+  subject: string,
+  body: string,
 ): Promise<Notification | null> {
-  let ctx: AppointmentMailContext | null;
-  try {
-    ctx = await getAppointmentMailContext(appointmentId);
-  } catch (err) {
-    console.error(`Notification context load failed (${event}):`, err);
-    return null;
-  }
-  if (!ctx) {
-    console.error(
-      `Notification skipped (${event}): no mail context for appointment ${appointmentId}.`,
-    );
-    return null;
-  }
-  const { subject, body } = buildEventContent(event, ctx, extra);
   let row: Notification;
   try {
     [row] = await db
@@ -335,7 +419,7 @@ export async function sendEventEmail(
         appointmentId,
         channel: "email",
         event,
-        recipientEmail: ctx.patientEmail,
+        recipientEmail,
         subject,
         body,
         status: "Pending",
@@ -343,11 +427,14 @@ export async function sendEventEmail(
       })
       .returning();
   } catch (err) {
-    console.error(`Notification row insert failed (${event}):`, err);
+    console.error(
+      `Notification row insert failed (${event} → ${recipientEmail}):`,
+      err,
+    );
     return null;
   }
   try {
-    await sendMail({ to: ctx.patientEmail, subject, text: body });
+    await sendMail({ to: recipientEmail, subject, text: body });
     const [sent] = await db
       .update(notifications)
       .set({ status: "Sent", sentAt: new Date() })
@@ -378,6 +465,48 @@ export async function sendEventEmail(
       return row;
     }
   }
+}
+
+export async function sendEventEmail(
+  appointmentId: number,
+  event: string,
+  extra: EventExtra = {},
+): Promise<Notification | null> {
+  let ctx: AppointmentMailContext | null;
+  try {
+    ctx = await getAppointmentMailContext(appointmentId);
+  } catch (err) {
+    console.error(`Notification context load failed (${event}):`, err);
+    return null;
+  }
+  if (!ctx) {
+    console.error(
+      `Notification skipped (${event}): no mail context for appointment ${appointmentId}.`,
+    );
+    return null;
+  }
+  // The patient always gets exactly one mail for the event.
+  const { subject, body } = buildEventContent(event, ctx, extra);
+  const patientRow = await sendSingleEmail(
+    appointmentId,
+    event,
+    ctx.patientEmail,
+    subject,
+    body,
+  );
+  // Booking lifecycle events also mail the doctor — a second row,
+  // a second recipient, never a second mail to the patient.
+  if (DOCTOR_RECIPIENT_EVENTS.has(event) && ctx.doctorEmail) {
+    const doctorContent = buildDoctorEventContent(event, ctx, extra);
+    await sendSingleEmail(
+      appointmentId,
+      event,
+      ctx.doctorEmail,
+      doctorContent.subject,
+      doctorContent.body,
+    );
+  }
+  return patientRow;
 }
 
 export type DueReminderCounts = {

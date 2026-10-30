@@ -81,6 +81,39 @@ function statusAccent(status: string): string {
   }
 }
 
+/** Rotating avatar tints, so card grids read colourful at a
+ * glance. Deterministic by position — never random. */
+const AVATAR_TINTS = [
+  "bg-teal-100 text-teal-800",
+  "bg-amber-100 text-amber-800",
+  "bg-rose-100 text-rose-800",
+  "bg-violet-100 text-violet-800",
+];
+
+/** Initials for avatar circles, from a display name
+ * ("Dr. Ananya Sharma" → "AS"). */
+function initialsOf(displayName: string): string {
+  const withoutPrefix = displayName.replace(/^Dr\.\s*/i, "");
+  const words = withoutPrefix.split(/\s+/).filter(Boolean);
+  const letters = words.slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "");
+  return letters.join("") || "Dr";
+}
+
+/**
+ * Dashboard wording for a failed refund. A 404 from Razorpay
+ * means the gateway does not recognise the payment reference
+ * under the configured keys — the refund was never created, and
+ * the generic provider-status text hides that. Any other reason
+ * is shown exactly as recorded.
+ */
+function refundFailureText(reason: string | null): string {
+  if (!reason) return "";
+  if (/status 404\b/.test(reason)) {
+    return " — Razorpay could not find this payment reference — the refund was not created";
+  }
+  return ` — ${reason}`;
+}
+
 /** Small pill tone for a payment status label. */
 function paymentPill(status: string): string {
   switch (status) {
@@ -150,35 +183,66 @@ export default async function DashboardPage() {
       if (profile) slotsByDoctor.set(profile.doctorId, profile.slots);
     }
     return (
+      <div className="min-h-dvh bg-gradient-to-br from-teal-50 via-amber-50 to-rose-100">
       <div className="mx-auto max-w-6xl px-4 py-10">
-        <div className="rounded-3xl border border-brand-100 bg-gradient-to-br from-brand-50 via-surface to-amber-50 px-6 py-6 shadow-sm">
-          <h1 className="text-3xl font-bold">Welcome, {user.name}</h1>
-          <p className="mt-1 text-slate-600">
-            Your appointments, in one place.
+        <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 px-6 py-8 shadow-xl shadow-teal-600/20 sm:px-8">
+          <div
+            aria-hidden="true"
+            className="absolute -top-10 -right-10 h-40 w-40 rounded-full bg-white/10"
+          />
+          <div
+            aria-hidden="true"
+            className="absolute -right-4 -bottom-16 h-32 w-32 rounded-full bg-amber-300/20"
+          />
+          <h1 className="relative text-3xl font-bold text-white sm:text-4xl">
+            Welcome, {user.name}
+          </h1>
+          <p className="relative mt-2 max-w-lg text-teal-50">
+            Your appointments, payments, and saved doctors — in one
+            place.
           </p>
-          <Link href="/doctors">
-            <Button className="mt-4">Book a new appointment</Button>
+          <Link href="/doctors" className="relative mt-5 inline-block">
+            <Button className="rounded-full bg-white px-6 text-teal-800 shadow-md hover:bg-teal-50">
+              Book a new appointment
+            </Button>
           </Link>
         </div>
 
-        <h2 className="mt-10 flex items-center gap-2 text-xl font-bold">
+        <h2 className="mt-12 flex items-center gap-2 text-2xl font-bold">
           <span className="h-2.5 w-2.5 rounded-full bg-brand-600" />
           My bookings
         </h2>
         {bookings.length === 0 ? (
-          <p className="mt-2 text-slate-600">
-            No bookings yet. Browse doctors and book your first
-            appointment.
-          </p>
+          <Card className="mt-4 border-dashed border-brand-200 bg-white/70">
+            <CardContent className="pt-6">
+              <p className="font-semibold">No bookings yet</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Browse doctors and book your first appointment — pick
+                a day, pick a time, and pay to confirm.
+              </p>
+              <Link href="/doctors">
+                <Button className="mt-4 rounded-full" size="sm">
+                  Find a doctor
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
         ) : (
           <div className="mt-4 grid gap-4">
-            {bookings.map((b) => (
+            {bookings.map((b, i) => (
               <Card
                 key={b.appointmentId}
-                className={`border-l-4 ${statusAccent(b.status)} transition-shadow hover:shadow-md`}
+                className={`border-l-4 ${statusAccent(b.status)} transition-shadow hover:shadow-lg`}
               >
                 <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
-                  <div>
+                  <div className="flex items-start gap-3">
+                    <span
+                      aria-hidden="true"
+                      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-sm font-bold ${AVATAR_TINTS[i % AVATAR_TINTS.length]}`}
+                    >
+                      {initialsOf(formatDoctorName(b.doctorName))}
+                    </span>
+                    <div>
                     <p className="font-medium">{formatDoctorName(b.doctorName)}</p>
                     <p className="mt-1">
                       <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-800">
@@ -191,13 +255,18 @@ export default async function DashboardPage() {
                         Reason: {b.reason}
                       </p>
                     )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <Badge status={b.status} />
                     {(b.status === "Booked" ||
                       b.status === "Confirmed") && (
-                      <div className="flex flex-wrap items-start gap-3">
-                        <PatientRescheduleControl
+                      <div className="rounded-2xl border border-brand-100 bg-brand-50/60 p-3 shadow-sm">
+                        <p className="mb-2 text-xs font-semibold tracking-wide text-brand-800 uppercase">
+                          Manage booking
+                        </p>
+                        <div className="flex flex-wrap items-start gap-3">
+                          <PatientRescheduleControl
                           appointmentId={b.appointmentId}
                           doctorName={formatDoctorName(b.doctorName)}
                           currentSlotId={b.slotId}
@@ -216,6 +285,7 @@ export default async function DashboardPage() {
                             ) ?? null
                           }
                         />
+                        </div>
                       </div>
                     )}
                     {b.status === "Pending" && (
@@ -235,6 +305,13 @@ export default async function DashboardPage() {
                               }
                               amountPaise={pay.amountPaise}
                               expiresAtIso={b.expiresAt?.toISOString()}
+                              prefill={{
+                                name: user.name,
+                                email: user.email,
+                                ...(user.phone
+                                  ? { contact: user.phone }
+                                  : {}),
+                              }}
                             />
                           );
                         })()}
@@ -265,7 +342,7 @@ export default async function DashboardPage() {
           </div>
         )}
 
-        <h2 className="mt-10 flex items-center gap-2 text-xl font-bold">
+        <h2 className="mt-12 flex items-center gap-2 text-2xl font-bold">
           <span className="h-2.5 w-2.5 rounded-full bg-warning-strong" />
           Payments &amp; refunds
         </h2>
@@ -275,14 +352,20 @@ export default async function DashboardPage() {
           refund has arrived — only a processed refund does.
         </p>
         {paymentHistory.length === 0 ? (
-          <p className="mt-2 text-slate-600">
-            No payments yet. Free bookings and bookings still
-            awaiting payment do not appear here.
-          </p>
+          <Card className="mt-4 border-dashed border-warning-strong/40 bg-white/70">
+            <CardContent className="pt-6">
+              <p className="font-semibold">No payments yet</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Free bookings and bookings still awaiting payment do
+                not appear here. Paid bookings and their refund
+                status will list here.
+              </p>
+            </CardContent>
+          </Card>
         ) : (
           <div className="mt-4 grid gap-4">
             {paymentHistory.map((entry) => (
-              <Card key={entry.paymentId} className="transition-shadow hover:shadow-md">
+              <Card key={entry.paymentId} className="transition-shadow hover:shadow-lg">
                 <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
                   <div>
                     <p className="font-medium">
@@ -329,11 +412,19 @@ export default async function DashboardPage() {
                       <>
                         <p className="rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger-strong">
                           Refund failed
-                          {entry.refund.failureReason
-                            ? ` — ${entry.refund.failureReason}`
-                            : ""}
+                          {refundFailureText(entry.refund.failureReason)}
                           . The appointment stays cancelled; only the
                           refund needs another try.
+                        </p>
+                        <p className="rounded-xl bg-white px-3 py-2 text-xs break-all text-slate-600 ring-1 ring-slate-200">
+                          Payment reference recorded by CareBook:{" "}
+                          {entry.gatewayPaymentId ? (
+                            <span className="font-mono font-semibold text-slate-900">
+                              {entry.gatewayPaymentId}
+                            </span>
+                          ) : (
+                            "No payment reference recorded"
+                          )}
                         </p>
                         <RefundRetryButton
                           refundId={entry.refund.refundId}
@@ -347,7 +438,7 @@ export default async function DashboardPage() {
           </div>
         )}
 
-        <h2 className="mt-10 flex items-center gap-2 text-xl font-bold">
+        <h2 className="mt-12 flex items-center gap-2 text-2xl font-bold">
           <span className="h-2.5 w-2.5 rounded-full bg-info-strong" />
           Favorite Doctors
         </h2>
@@ -357,14 +448,25 @@ export default async function DashboardPage() {
           appointment.
         </p>
         {favorites.length === 0 ? (
-          <p className="mt-2 text-slate-600">
-            You haven&apos;t saved any doctors yet. Browse doctors and
-            save the ones you&apos;d like to find again.
-          </p>
+          <Card className="mt-4 border-dashed border-info-strong/40 bg-white/70">
+            <CardContent className="pt-6">
+              <p className="font-semibold">No saved doctors yet</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Browse doctors and save the ones you&apos;d like to
+                find again. Saving is only a bookmark — it does not
+                book an appointment.
+              </p>
+              <Link href="/doctors">
+                <Button className="mt-4 rounded-full" size="sm">
+                  Browse doctors
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
         ) : (
           <div className="mt-4 grid gap-4">
             {favorites.map((d) => (
-              <Card key={d.doctorId} className="transition-shadow hover:shadow-md">
+              <Card key={d.doctorId} className="transition-shadow hover:shadow-lg">
                 <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
                   <div>
                     <p className="font-medium">{formatDoctorName(d.name)}</p>
@@ -399,10 +501,16 @@ export default async function DashboardPage() {
           </div>
         )}
       </div>
+      </div>
     );
   }
 
-  // Doctor dashboard.
+  // Doctor dashboard — the doctor's own premium home, not a copy
+  // of the patient view. Every number and list below derives from
+  // the bookings, slots, and paid payments already loaded above;
+  // nothing is invented. All actions (confirm/complete/cancel)
+  // keep their existing dialogs and policy text via
+  // DoctorStatusButtons; only the presentation changes.
   const doctorId = await getDoctorIdByUser(session.userId);
   const bookings = doctorId ? await getDoctorBookings(doctorId) : [];
   const mySlots = doctorId ? await getDoctorSlotsForManage(doctorId) : [];
@@ -414,130 +522,470 @@ export default async function DashboardPage() {
   const today = todayIST();
   const upcomingSlots = mySlots.filter((s) => s.date >= today);
 
+  // Partition: every booking lands in exactly one section below.
+  const isLive = (status: string) =>
+    status === "Booked" || status === "Confirmed";
+  const byDateTime = (
+    a: { slotDate: string; slotStart: string },
+    b: { slotDate: string; slotStart: string },
+  ) =>
+    a.slotDate === b.slotDate
+      ? a.slotStart.localeCompare(b.slotStart)
+      : a.slotDate.localeCompare(b.slotDate);
+  const todaySchedule = bookings
+    .filter((b) => b.slotDate === today && isLive(b.status))
+    .sort(byDateTime);
+  const upcoming = bookings
+    .filter((b) => b.slotDate > today && isLive(b.status))
+    .sort(byDateTime);
+  const awaiting = bookings
+    .filter((b) => b.status === "Pending")
+    .sort(byDateTime);
+  const history = bookings
+    .filter(
+      (b) =>
+        b.status === "Completed" ||
+        b.status === "Cancelled" ||
+        (isLive(b.status) && b.slotDate < today),
+    )
+    .sort((a, b) => -byDateTime(a, b));
+
+  // Distinct patients, from non-cancelled bookings only: a patient
+  // who only ever cancelled is not yet this doctor's patient.
+  // Counts and latest dates are real, from the same bookings.
+  const patientMap = new Map<string, { count: number; latest: string }>();
+  for (const b of bookings) {
+    if (b.status === "Cancelled") continue;
+    const cur = patientMap.get(b.patientName) ?? {
+      count: 0,
+      latest: b.slotDate,
+    };
+    cur.count += 1;
+    if (b.slotDate > cur.latest) cur.latest = b.slotDate;
+    patientMap.set(b.patientName, cur);
+  }
+  const patients = [...patientMap.entries()].sort(
+    (a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]),
+  );
+
+  // Payments received: every Paid payment for this doctor's
+  // appointments, joined back to its booking for the patient and
+  // date. Gross received — refunds, if any, live on the patient's
+  // payment record, not here.
+  const bookingById = new Map(
+    bookings.map((b) => [b.appointmentId, b]),
+  );
+  const earningsEntries = [...paidAmounts.entries()]
+    .flatMap(([appointmentId, pay]) => {
+      const booking = bookingById.get(appointmentId);
+      return booking
+        ? [{ appointmentId, amountPaise: pay.amountPaise, booking }]
+        : [];
+    })
+    .sort((a, b) => -byDateTime(a.booking, b.booking));
+  const earningsTotal = earningsEntries.reduce(
+    (sum, e) => sum + e.amountPaise,
+    0,
+  );
+
+  // One booking card, reused by every schedule section so the
+  // actions and timeline never drift apart. A plain helper, not a
+  // component, so no client state is ever remade.
+  const doctorBookingCard = (b: (typeof bookings)[number]) => (
+    <Card
+      key={b.appointmentId}
+      className={`border-l-4 ${statusAccent(b.status)} transition-shadow hover:shadow-lg`}
+    >
+      <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
+        <div className="flex items-start gap-3">
+          <span
+            aria-hidden="true"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-teal-100 text-sm font-bold text-teal-800"
+          >
+            {initialsOf(b.patientName)}
+          </span>
+          <div>
+            <p className="font-medium">{b.patientName}</p>
+            <p className="mt-1">
+              <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-800">
+                {formatDate(b.slotDate)}, {formatTime(b.slotStart)} –{" "}
+                {formatTime(b.slotEnd)}
+              </span>
+            </p>
+            {b.reason && (
+              <p className="mt-1 text-sm text-slate-600">
+                Reason: {b.reason}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge status={b.status} />
+          <DoctorStatusButtons
+            appointmentId={b.appointmentId}
+            status={b.status}
+            patientName={b.patientName}
+            dateLabel={formatDate(b.slotDate)}
+            timeLabel={`${formatTime(b.slotStart)} – ${formatTime(b.slotEnd)}`}
+            paidAmountPaise={
+              paidAmounts.get(b.appointmentId)?.amountPaise ?? null
+            }
+          />
+        </div>
+      </CardContent>
+      <AppointmentTimeline
+        status={b.status}
+        bookedAt={b.bookedAt}
+        dateLabel={formatDate(b.slotDate)}
+        timeLabel={`${formatTime(b.slotStart)} – ${formatTime(b.slotEnd)}`}
+        expiresAt={b.expiresAt ?? undefined}
+      />
+    </Card>
+  );
+
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
-      <div className="rounded-3xl border border-brand-100 bg-gradient-to-br from-brand-50 via-surface to-amber-50 px-6 py-6 shadow-sm">
-        <h1 className="text-3xl font-bold">Welcome, {user.name}</h1>
-        <p className="mt-1 text-slate-600">
-          Appointments booked with you, and your availability.
-        </p>
-      </div>
-
-      <h2 className="mt-10 flex items-center gap-2 text-xl font-bold">
-        <span className="h-2.5 w-2.5 rounded-full bg-brand-600" />
-        Appointments
-      </h2>
-      {bookings.length === 0 ? (
-        <p className="mt-2 text-slate-600">
-          No appointments yet. Patients will appear here once they book
-          one of your windows.
-        </p>
-      ) : (
-        <div className="mt-4 grid gap-4">
-          {bookings.map((b) => (
-            <Card
-              key={b.appointmentId}
-              className={`border-l-4 ${statusAccent(b.status)} transition-shadow hover:shadow-md`}
+    <div className="min-h-dvh bg-gradient-to-br from-teal-50 via-amber-50 to-rose-100">
+      <div className="mx-auto max-w-6xl px-4 py-10">
+        {/* Hero: the doctor's own home. */}
+        <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-r from-teal-700 via-emerald-600 to-cyan-600 px-6 py-8 shadow-xl shadow-teal-600/20 sm:px-8">
+          <div
+            aria-hidden="true"
+            className="absolute -top-10 -right-10 h-40 w-40 rounded-full bg-white/10"
+          />
+          <div
+            aria-hidden="true"
+            className="absolute -right-4 -bottom-16 h-32 w-32 rounded-full bg-amber-300/20"
+          />
+          <h1 className="relative text-3xl font-bold text-white sm:text-4xl">
+            Welcome, {user.name}
+          </h1>
+          <p className="relative mt-2 max-w-xl text-teal-50">
+            Today is {formatDate(today)}. Here is your practice at a
+            glance — today&apos;s patients, what&apos;s coming up,
+            and what you have received.
+          </p>
+          <div className="relative mt-5 flex flex-wrap gap-3">
+            {doctorId && (
+              <Link href={`/doctors/${doctorId}`}>
+                <Button className="rounded-full bg-white px-6 text-teal-800 shadow-md hover:bg-teal-50">
+                  View my public profile
+                </Button>
+              </Link>
+            )}
+            <a
+              href="#availability"
+              className="inline-flex h-10 items-center rounded-full border border-white/40 bg-white/10 px-6 text-sm font-medium text-white shadow-md transition-colors hover:bg-white/20"
             >
-              <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
-                <div>
-                  <p className="font-medium">{b.patientName}</p>
-                  <p className="mt-1">
-                    <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-800">
-                      {formatDate(b.slotDate)}, {formatTime(b.slotStart)} –{" "}
-                      {formatTime(b.slotEnd)}
-                    </span>
-                  </p>
-                  {b.reason && (
+              Manage availability
+            </a>
+          </div>
+        </div>
+
+        {/* Stat strip: only this doctor's own real numbers. */}
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-3xl border border-teal-200 bg-gradient-to-br from-teal-50 to-emerald-100 px-5 py-5 shadow-sm">
+            <p className="text-3xl font-bold text-teal-900">
+              {todaySchedule.length}
+            </p>
+            <p className="mt-1 text-sm font-semibold text-teal-800">
+              Appointments today
+            </p>
+            <p className="text-xs text-teal-700">
+              Booked or confirmed for today.
+            </p>
+          </div>
+          <div className="rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-100 px-5 py-5 shadow-sm">
+            <p className="text-3xl font-bold text-amber-900">
+              {upcoming.length}
+            </p>
+            <p className="mt-1 text-sm font-semibold text-amber-800">
+              Coming up
+            </p>
+            <p className="text-xs text-amber-700">
+              Booked or confirmed after today.
+            </p>
+          </div>
+          <div className="rounded-3xl border border-violet-200 bg-gradient-to-br from-violet-50 to-purple-100 px-5 py-5 shadow-sm">
+            <p className="text-3xl font-bold text-violet-900">
+              {patients.length}
+            </p>
+            <p className="mt-1 text-sm font-semibold text-violet-800">
+              Patients
+            </p>
+            <p className="text-xs text-violet-700">
+              People with a booking with you.
+            </p>
+          </div>
+          <div className="rounded-3xl border border-rose-200 bg-gradient-to-br from-rose-50 to-pink-100 px-5 py-5 shadow-sm">
+            <p className="text-3xl font-bold text-rose-900">
+              {formatPaise(earningsTotal)}
+            </p>
+            <p className="mt-1 text-sm font-semibold text-rose-800">
+              Payments received
+            </p>
+            <p className="text-xs text-rose-700">
+              Across {earningsEntries.length} paid booking
+              {earningsEntries.length === 1 ? "" : "s"}.
+            </p>
+          </div>
+        </div>
+
+        <h2 className="mt-12 flex items-center gap-2 text-2xl font-bold">
+          <span className="h-2.5 w-2.5 rounded-full bg-brand-600" />
+          Today&apos;s schedule
+        </h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Everyone you are seeing today, in time order. Confirm an
+          appointment when the patient arrives, complete it when it
+          is done.
+        </p>
+        {todaySchedule.length === 0 ? (
+          <Card className="mt-4 border-dashed border-brand-200 bg-white/70">
+            <CardContent className="pt-6">
+              <p className="font-semibold">Nothing on today</p>
+              <p className="mt-1 text-sm text-slate-600">
+                No booked or confirmed appointments for today. New
+                bookings appear here as soon as a patient books one
+                of your windows.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="mt-4 grid gap-4">
+            {todaySchedule.map(doctorBookingCard)}
+          </div>
+        )}
+
+        <h2 className="mt-12 flex items-center gap-2 text-2xl font-bold">
+          <span className="h-2.5 w-2.5 rounded-full bg-warning-strong" />
+          Upcoming
+        </h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Booked and confirmed appointments after today.
+        </p>
+        {upcoming.length === 0 ? (
+          <Card className="mt-4 border-dashed border-warning-strong/40 bg-white/70">
+            <CardContent className="pt-6">
+              <p className="font-semibold">Nothing coming up yet</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Future bookings will list here. Make sure your
+                windows below are active, so patients can book them.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="mt-4 grid gap-4">
+            {upcoming.map(doctorBookingCard)}
+          </div>
+        )}
+
+        {awaiting.length > 0 && (
+          <>
+            <h2 className="mt-12 flex items-center gap-2 text-2xl font-bold">
+              <span className="h-2.5 w-2.5 rounded-full bg-info-strong" />
+              Awaiting payment
+            </h2>
+            <p className="mt-1 text-sm text-slate-600">
+              These holds expire 15 minutes after booking if the
+              patient does not pay — the slot then frees itself.
+            </p>
+            <div className="mt-4 grid gap-4">
+              {awaiting.map(doctorBookingCard)}
+            </div>
+          </>
+        )}
+
+        <h2 className="mt-12 flex items-center gap-2 text-2xl font-bold">
+          <span className="h-2.5 w-2.5 rounded-full bg-violet-600" />
+          Your patients
+        </h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Everyone who has booked with you, with how often and how
+          recently.
+        </p>
+        {patients.length === 0 ? (
+          <Card className="mt-4 border-dashed border-violet-300 bg-white/70">
+            <CardContent className="pt-6">
+              <p className="font-semibold">No patients yet</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Patients will appear here as soon as someone books
+                one of your windows. Add an availability window
+                below, and share your public profile link so patients
+                can find you.
+              </p>
+              {doctorId && (
+                <Link href={`/doctors/${doctorId}`}>
+                  <Button className="mt-4 rounded-full" size="sm">
+                    View my public profile
+                  </Button>
+                </Link>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {patients.map(([name, info], i) => (
+              <Card
+                key={name}
+                className="transition-shadow hover:shadow-lg"
+              >
+                <CardContent className="flex items-start gap-3 pt-6">
+                  <span
+                    aria-hidden="true"
+                    className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-sm font-bold ${AVATAR_TINTS[i % AVATAR_TINTS.length]}`}
+                  >
+                    {initialsOf(name)}
+                  </span>
+                  <div>
+                    <p className="font-medium">{name}</p>
                     <p className="mt-1 text-sm text-slate-600">
-                      Reason: {b.reason}
+                      {info.count} appointment
+                      {info.count === 1 ? "" : "s"} · latest{" "}
+                      {formatDate(info.latest)}
                     </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  <Badge status={b.status} />
-                  <DoctorStatusButtons
-                    appointmentId={b.appointmentId}
-                    status={b.status}
-                    patientName={b.patientName}
-                    dateLabel={formatDate(b.slotDate)}
-                    timeLabel={`${formatTime(b.slotStart)} – ${formatTime(b.slotEnd)}`}
-                    paidAmountPaise={
-                      paidAmounts.get(b.appointmentId)?.amountPaise ??
-                      null
-                    }
-                  />
-                </div>
-              </CardContent>
-              <AppointmentTimeline
-                status={b.status}
-                bookedAt={b.bookedAt}
-                dateLabel={formatDate(b.slotDate)}
-                timeLabel={`${formatTime(b.slotStart)} – ${formatTime(b.slotEnd)}`}
-                expiresAt={b.expiresAt ?? undefined}
-              />
-            </Card>
-          ))}
-        </div>
-      )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
 
-      <h2 className="mt-12 flex items-center gap-2 text-xl font-bold">
-        <span className="h-2.5 w-2.5 rounded-full bg-info-strong" />
-        My availability
-      </h2>
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle>Add a window</CardTitle>
-          <CardDescription>
-            Patients can only book windows you mark active. Removing a
-            window with upcoming bookings is blocked, so patients are
-            never stranded.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <SlotCreateForm />
-        </CardContent>
-      </Card>
-
-      {upcomingSlots.length === 0 ? (
-        <p className="mt-4 text-slate-600">
-          No upcoming windows. Add one above, or use the default Mon–Fri
-          schedule created at sign-up.
+        <h2 className="mt-12 flex items-center gap-2 text-2xl font-bold">
+          <span className="h-2.5 w-2.5 rounded-full bg-rose-500" />
+          Payments received
+        </h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Paid bookings — the money patients have paid for
+          appointments with you.
         </p>
-      ) : (
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {upcomingSlots.map((s) => (
-            <Card
-              key={s.slotId}
-              className={`border-l-4 ${s.isActive ? "border-l-success-strong" : "border-l-neutral-strong"} transition-shadow hover:shadow-md`}
-            >
-              <CardContent className="flex items-center justify-between gap-3 pt-6">
-                <div>
-                  <p className="font-medium">{formatDate(s.date)}</p>
-                  <p className="text-sm text-slate-600">
-                    {formatTime(s.startTime)} – {formatTime(s.endTime)}
-                  </p>
-                  <p className="mt-1 flex flex-wrap items-center gap-2 text-sm">
-                    <span className="text-slate-500">
-                      {s.activeBookings} active booking(s) · max{" "}
-                      {s.maxAppointments}
-                    </span>
+        {earningsEntries.length === 0 ? (
+          <Card className="mt-4 border-dashed border-rose-300 bg-white/70">
+            <CardContent className="pt-6">
+              <p className="font-semibold">No payments received yet</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Payments appear here when a patient pays for a
+                booking with you. Unpaid holds and free bookings do
+                not appear here.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="mt-4 grid gap-4">
+            {earningsEntries.map((e) => (
+              <Card
+                key={e.appointmentId}
+                className="transition-shadow hover:shadow-lg"
+              >
+                <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
+                  <div className="flex items-start gap-3">
                     <span
-                      className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${s.isActive ? "bg-success-soft text-success-strong" : "bg-neutral-soft text-neutral-strong"}`}
+                      aria-hidden="true"
+                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rose-100 text-sm font-bold text-rose-800"
                     >
-                      {s.isActive ? "Active" : "Inactive"}
+                      {initialsOf(e.booking.patientName)}
                     </span>
+                    <div>
+                      <p className="font-medium">{e.booking.patientName}</p>
+                      <p className="mt-1">
+                        <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-800">
+                          {formatDate(e.booking.slotDate)},{" "}
+                          {formatTime(e.booking.slotStart)} –{" "}
+                          {formatTime(e.booking.slotEnd)}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-lg font-bold text-ink">
+                    {formatPaise(e.amountPaise)}
                   </p>
-                </div>
-                <SlotToggleButton
-                  slotId={s.slotId}
-                  isActive={s.isActive}
-                />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        <h2
+          id="availability"
+          className="mt-12 flex scroll-mt-24 items-center gap-2 text-2xl font-bold"
+        >
+          <span className="h-2.5 w-2.5 rounded-full bg-info-strong" />
+          My availability
+        </h2>
+        <Card className="mt-4 border-2 border-brand-200 bg-gradient-to-br from-white to-brand-50 shadow-md">
+          <CardHeader>
+            <CardTitle>Add a window</CardTitle>
+            <CardDescription>
+              Patients can only book windows you mark active.
+              Removing a window with upcoming bookings is blocked, so
+              patients are never stranded.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SlotCreateForm />
+          </CardContent>
+        </Card>
+
+        {upcomingSlots.length === 0 ? (
+          <Card className="mt-4 border-dashed border-info-strong/40 bg-white/70">
+            <CardContent className="pt-6">
+              <p className="font-semibold">No upcoming windows</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Add one above to open bookings, or use the default
+                Mon–Fri schedule created at sign-up. Inactive windows
+                never appear to patients.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {upcomingSlots.map((s) => (
+              <Card
+                key={s.slotId}
+                className={`border-l-4 ${s.isActive ? "border-l-success-strong" : "border-l-neutral-strong"} transition-shadow hover:shadow-lg`}
+              >
+                <CardContent className="flex items-center justify-between gap-3 pt-6">
+                  <div>
+                    <p className="font-medium">{formatDate(s.date)}</p>
+                    <p className="text-sm text-slate-600">
+                      {formatTime(s.startTime)} – {formatTime(s.endTime)}
+                    </p>
+                    <p className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+                      <span className="text-slate-500">
+                        {s.activeBookings} active booking(s) · max{" "}
+                        {s.maxAppointments}
+                      </span>
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${s.isActive ? "bg-success-soft text-success-strong" : "bg-neutral-soft text-neutral-strong"}`}
+                      >
+                        {s.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </p>
+                  </div>
+                  <SlotToggleButton
+                    slotId={s.slotId}
+                    isActive={s.isActive}
+                  />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {history.length > 0 && (
+          <>
+            <h2 className="mt-12 flex items-center gap-2 text-2xl font-bold">
+              <span className="h-2.5 w-2.5 rounded-full bg-neutral-strong" />
+              History
+            </h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Completed, cancelled, and past appointments.
+            </p>
+            <div className="mt-4 grid gap-4">
+              {history.map(doctorBookingCard)}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

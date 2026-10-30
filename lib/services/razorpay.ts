@@ -151,6 +151,45 @@ export async function findExistingGatewayRefund(
   }
 }
 
+/**
+ * Read-only re-sync: list the payments Razorpay holds for one
+ * order, and return the ids of the captured ones. Used ONLY when
+ * a refund fails with 404, to check whether the payment reference
+ * CareBook recorded still matches what Razorpay holds (a stale
+ * reference 404s even though the payment itself is captured).
+ * NEVER throws: any failure (missing keys, network, non-OK,
+ * unparseable body) returns null, and the caller keeps its
+ * original failure. Read-only — it creates nothing at Razorpay.
+ */
+export async function fetchPaymentsByOrder(
+  orderId: string,
+): Promise<string[] | null> {
+  try {
+    const res = await fetch(`${ORDERS_URL}/${orderId}/payments`, {
+      headers: { Authorization: basicAuth() },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      items?: { id?: unknown; status?: unknown }[];
+    };
+    if (!Array.isArray(data.items)) return null;
+    const captured: string[] = [];
+    for (const item of data.items) {
+      if (
+        typeof item.id === "string" &&
+        item.id.length > 0 &&
+        item.status === "captured"
+      ) {
+        captured.push(item.id);
+      }
+    }
+    return captured;
+  } catch (err) {
+    console.error("Listing order payments failed:", err);
+    return null;
+  }
+}
+
 /** Constant-time comparison of two hex digests. */
 function digestsEqual(a: string, b: string): boolean {
   const bufA = Buffer.from(a);

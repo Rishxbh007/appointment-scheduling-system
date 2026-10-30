@@ -11,7 +11,21 @@ import { Button } from "@/components/ui/button";
 // original white bar, unchanged. Link destinations are identical in
 // both variants; only the wordmark (CAREBOOK), the middle navigation
 // placement, and the pill buttons are new.
-export function SiteHeader({ signedIn }: { signedIn: boolean }) {
+//
+// Role-aware navigation: a signed-in doctor is never pushed to browse
+// doctors — his middle links are Dashboard and his own public
+// profile. Patients keep Doctors + Dashboard; signed-out visitors
+// keep Doctors. The header itself stays presentational: the layout
+// resolves the doctor's profile id server-side.
+export function SiteHeader({
+  signedIn,
+  role,
+  doctorId,
+}: {
+  signedIn: boolean;
+  role: "Patient" | "Doctor" | null;
+  doctorId: number | null;
+}) {
   const pathname = usePathname();
   const isHome = pathname === "/";
 
@@ -35,15 +49,35 @@ export function SiteHeader({ signedIn }: { signedIn: boolean }) {
           CAREBOOK
         </Link>
 
-        {/* Middle navigation — always visible, compact on mobile. */}
+        {/* Middle navigation — always visible, compact on mobile.
+          Doctors get Dashboard + their own profile; everyone else
+          gets the doctor-browsing list. */}
         <div className="flex items-center gap-4 md:gap-6">
-          <Link href="/doctors" className={navLinkClass}>
-            Doctors
-          </Link>
-          {signedIn && (
-            <Link href="/dashboard" className={navLinkClass}>
-              Dashboard
-            </Link>
+          {role === "Doctor" ? (
+            <>
+              {signedIn && (
+                <Link href="/dashboard" className={navLinkClass}>
+                  Dashboard
+                </Link>
+              )}
+              <Link
+                href={doctorId ? `/doctors/${doctorId}` : "/dashboard"}
+                className={navLinkClass}
+              >
+                My profile
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link href="/doctors" className={navLinkClass}>
+                Doctors
+              </Link>
+              {signedIn && (
+                <Link href="/dashboard" className={navLinkClass}>
+                  Dashboard
+                </Link>
+              )}
+            </>
           )}
         </div>
 

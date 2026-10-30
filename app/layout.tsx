@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { getSession } from "@/lib/auth";
+import { ensureDb } from "@/lib/db";
+import { getDoctorIdByUser } from "@/lib/services/accounts";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 
@@ -29,6 +31,14 @@ export default async function RootLayout({
   // Reading the session cookie makes the layout dynamic, which also
   // keeps `next build` from trying to prerender session-aware pages.
   const session = await getSession();
+  // A doctor's header links to his own public profile, never to the
+  // doctor-browsing list — resolving the id here keeps the client
+  // header a pure presentational component.
+  let doctorId: number | null = null;
+  if (session?.role === "Doctor") {
+    await ensureDb();
+    doctorId = await getDoctorIdByUser(session.userId);
+  }
 
   return (
     <html
@@ -40,7 +50,11 @@ export default async function RootLayout({
           renders the original white bar everywhere else. The register
           page's ambient wash is a fixed z-0 layer, so the header sits
           above it (z-10/z-50) to stay crisp. */}
-        <SiteHeader signedIn={!!session} />
+        <SiteHeader
+          signedIn={!!session}
+          role={session?.role ?? null}
+          doctorId={doctorId}
+        />
         <main className="flex-1">{children}</main>
         {/* Site footer, hidden on the auth-flow pages (/login,
           /register, /auth/start) so those pages end cleanly at their

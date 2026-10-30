@@ -96,17 +96,30 @@ function formatExpiry(iso: string): string {
   });
 }
 
+export type CheckoutPrefill = {
+  name?: string;
+  email?: string;
+  /** Patient phone, when one is on file. */
+  contact?: string;
+};
+
 export function PaymentCheckout({
   appointmentId,
   orderId,
   amountPaise,
   expiresAtIso,
+  prefill,
 }: {
   appointmentId: number;
   /** Null when there is no live order — the button retries first. */
   orderId: string | null;
   amountPaise: number;
   expiresAtIso?: string;
+  /** Signed-in patient's own details, when known. Razorpay
+   * pre-fills these so it never asks for a mobile number the
+   * patient already gave us; fields that are absent are simply
+   * omitted, never sent as blanks. */
+  prefill?: CheckoutPrefill;
 }) {
   const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(
@@ -141,6 +154,13 @@ export function PaymentCheckout({
       );
       return;
     }
+    // Prefill only the fields the patient actually has on file —
+    // an absent phone stays absent rather than arriving blank and
+    // re-triggering Razorpay's mobile-number step.
+    const prefillOptions: Record<string, string> = {};
+    if (prefill?.name) prefillOptions.name = prefill.name;
+    if (prefill?.email) prefillOptions.email = prefill.email;
+    if (prefill?.contact) prefillOptions.contact = prefill.contact;
     const checkout = new window.Razorpay({
       key: keyId,
       amount: amountPaise,
@@ -148,6 +168,9 @@ export function PaymentCheckout({
       order_id: orderToPay,
       name: "CareBook",
       description: "Consultation fee",
+      ...(Object.keys(prefillOptions).length > 0
+        ? { prefill: prefillOptions }
+        : {}),
       handler: (response: RazorpaySuccess) => {
         completedRef.current = true;
         setBusy(true);

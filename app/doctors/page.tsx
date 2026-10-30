@@ -7,16 +7,9 @@ import {
   formatDoctorName,
 } from "@/lib/services/doctors";
 import { getPatientIdByUser } from "@/lib/services/accounts";
-import { FavoriteToggle } from "@/components/favorite-toggle";
+import { DoctorCard } from "@/components/doctor-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
 
@@ -43,92 +36,97 @@ export default async function DoctorsPage({
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
-      <div className="rounded-3xl border border-brand-100 bg-gradient-to-br from-brand-50 via-surface to-amber-50 px-6 py-6 shadow-sm">
-        <h1 className="text-3xl font-bold">Find a doctor</h1>
-        <p className="mt-1 text-slate-600">
-          Search by specialization (e.g. Cardiology) or doctor name.
-        </p>
-      </div>
-      <form method="get" action="/doctors" className="mt-6 flex gap-2">
-        <Input
-          name="q"
-          defaultValue={q}
-          placeholder="Search specialization or name…"
-          className="max-w-md"
-        />
-        <Button type="submit" variant="outline">
-          Search
-        </Button>
-        {q && (
-          <Link href="/doctors">
-            <Button variant="ghost">Clear</Button>
-          </Link>
-        )}
-      </form>
-
-      {doctors.length === 0 ? (
-        <p className="mt-8 text-slate-600">
-          No doctors match that search yet.
-        </p>
-      ) : (
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {doctors.map((d) => (
-            <Card
-              key={d.doctorId}
-              className="transition-all hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <CardHeader>
-                <CardTitle>{formatDoctorName(d.name)}</CardTitle>
-                <CardDescription>
-                  {d.specializationNames.length > 0 ? (
-                    <span className="flex flex-wrap gap-1.5">
-                      {d.specializationNames.map((s) => (
-                        <span
-                          key={s}
-                          className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-800"
-                        >
-                          {s}
-                        </span>
-                      ))}
-                    </span>
-                  ) : (
-                    "General practice"
-                  )}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-slate-600">
-                  {d.qualification ?? "—"}
-                  {d.experienceYears !== null &&
-                    ` · ${d.experienceYears} yrs experience`}
-                </p>
-                <p className="mt-2">
-                  <span className="rounded-full bg-warning-soft px-2.5 py-1 text-xs font-bold text-warning-strong">
-                    {d.consultationFee !== null
-                      ? `₹${d.consultationFee} consultation`
-                      : "Fee on request"}
-                  </span>
-                </p>
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <Link href={`/doctors/${d.doctorId}`}>
-                    <Button variant="outline" size="sm">
-                      View &amp; book
-                    </Button>
-                  </Link>
-                  {session?.role === "Patient" && (
-                    <FavoriteToggle
-                      doctorId={d.doctorId}
-                      doctorName={formatDoctorName(d.name)}
-                      isFavorite={favoriteIds.has(d.doctorId)}
-                    />
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+    <div className="min-h-dvh bg-gradient-to-br from-teal-50 via-amber-50 to-rose-100">
+      <div className="mx-auto max-w-6xl px-4 py-10">
+        <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 px-6 py-8 shadow-xl shadow-teal-600/20 sm:px-8">
+          <div
+            aria-hidden="true"
+            className="absolute -top-10 -right-10 h-40 w-40 rounded-full bg-white/10"
+          />
+          <div
+            aria-hidden="true"
+            className="absolute -right-4 -bottom-16 h-32 w-32 rounded-full bg-amber-300/20"
+          />
+          <h1 className="relative text-3xl font-bold text-white sm:text-4xl">
+            Find a doctor
+          </h1>
+          <p className="relative mt-2 max-w-lg text-teal-50">
+            Search by specialization (e.g. Cardiology) or doctor
+            name. Tap any doctor&apos;s card to view their profile
+            and book.
+          </p>
         </div>
-      )}
+
+        <form method="get" action="/doctors" className="mt-6 flex gap-2">
+          <Input
+            name="q"
+            defaultValue={q}
+            placeholder="Search specialization or name…"
+            className="h-12 max-w-md rounded-full border-slate-200 bg-white shadow-sm"
+          />
+          <Button
+            type="submit"
+            className="h-12 rounded-full px-6 shadow-md shadow-brand-600/20"
+          >
+            Search
+          </Button>
+          {q && (
+            <Link href="/doctors">
+              <Button variant="ghost" className="h-12 rounded-full">
+                Clear
+              </Button>
+            </Link>
+          )}
+        </form>
+        <p className="mt-3 text-sm text-slate-600">
+          {q ? (
+            <>
+              Results for “{q}”: {doctors.length} doctor
+              {doctors.length === 1 ? "" : "s"}
+            </>
+          ) : (
+            <>
+              {doctors.length} doctor{doctors.length === 1 ? "" : "s"}{" "}
+              available
+            </>
+          )}
+        </p>
+
+        {doctors.length === 0 ? (
+          <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+            <p className="text-lg font-semibold text-slate-900">
+              No doctors match that search yet.
+            </p>
+            <p className="mt-1 text-sm text-slate-600">
+              Try a different specialization or name.
+            </p>
+            {q && (
+              <Link href="/doctors">
+                <Button className="mt-4 rounded-full">
+                  Show all doctors
+                </Button>
+              </Link>
+            )}
+          </div>
+        ) : (
+          <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {doctors.map((d, i) => (
+              <DoctorCard
+                key={d.doctorId}
+                doctorId={d.doctorId}
+                name={formatDoctorName(d.name)}
+                specializationNames={d.specializationNames}
+                qualification={d.qualification}
+                experienceYears={d.experienceYears}
+                consultationFee={d.consultationFee}
+                isFavorite={favoriteIds.has(d.doctorId)}
+                showFavorite={session?.role === "Patient"}
+                accentIndex={i}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

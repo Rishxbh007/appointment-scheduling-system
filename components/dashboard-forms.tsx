@@ -411,8 +411,16 @@ export function PatientRescheduleControl({
 
   return (
     <>
-      <Button type="button" size="sm" variant="outline" onClick={openDialog}>
-        Reschedule
+      {/* Prominent accent button, not a quiet outline: reschedule
+        is a first-class action next to Cancel, so it gets the
+        solid teal treatment, a shadow, and an arrow cue. */}
+      <Button
+        type="button"
+        size="sm"
+        onClick={openDialog}
+        className="bg-brand-600 font-semibold shadow-md shadow-brand-600/25 hover:bg-brand-700"
+      >
+        ↻ Reschedule
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
