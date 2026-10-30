@@ -22,6 +22,7 @@
 
 import { processDueReminders } from "@/lib/services/notifications";
 import { sweepExpiredPendings } from "@/lib/services/payments";
+import { topUpDemoDoctorSlots } from "@/lib/services/demo-slots";
 import { ensureDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +52,32 @@ export async function GET(req: Request): Promise<Response> {
 
   const reminders = await processDueReminders();
   const swept = await sweepExpiredPendings();
+
+  // Rolling demo availability (Part A item 3): top up DEMO
+  // doctors' slots to a rolling 7-day horizon, so the demo never
+  // runs dry a few days after seeding. This only ever ADDS
+  // future slots for the exact seed-email doctors (see
+  // lib/services/demo-slots.ts) — it never touches existing
+  // slots, bookings, or any real doctor. It runs after the
+  // reminder/sweep work and a failure here must not fail those:
+  // it is caught, logged, and reported, and the cron still
+  // returns ok for the reminder work it did.
+  let demoSlotTopUp: {
+    doctorsChecked: number;
+    slotsAdded: number;
+    error?: string;
+  } = { doctorsChecked: 0, slotsAdded: 0 };
+  try {
+    demoSlotTopUp = await topUpDemoDoctorSlots();
+  } catch (err) {
+    console.error("Demo slot top-up failed:", err);
+    demoSlotTopUp = {
+      doctorsChecked: 0,
+      slotsAdded: 0,
+      error: err instanceof Error ? err.message : "Unknown error.",
+    };
+  }
+
   return Response.json({
     ok: true,
     reminders: {
@@ -63,5 +90,6 @@ export async function GET(req: Request): Promise<Response> {
       appointments: swept.appointments,
       payments: swept.payments,
     },
+    demoSlotTopUp,
   });
 }

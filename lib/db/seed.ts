@@ -60,6 +60,17 @@ const SEED_DOCTORS: SeedDoctor[] = [
   },
 ];
 
+/**
+ * The exact marker for a demo/seed doctor: the four seed emails
+ * above. lib/services/demo-slots.ts reuses this list (never a
+ * guess, never a domain pattern) so the rolling top-up can only
+ * ever touch these doctors — a real registered doctor, even one
+ * who happens to share a name, is never matched.
+ */
+export const SEED_DOCTOR_EMAILS: string[] = SEED_DOCTORS.map(
+  (d) => d.email,
+);
+
 export async function seedDemoData(): Promise<void> {
   const count = await db.$count(users);
   if (count > 0) return; // Never seed over real data.

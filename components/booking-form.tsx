@@ -1,20 +1,29 @@
-// Patient booking form: pick a slot, give a reason, book it.
-// Shown only to signed-in patients on a doctor's profile page.
+// Patient booking form — guided steps, rebuilt from zero.
 //
-// The form receives ALL of the doctor's upcoming slots, not just
-// the bookable ones: unavailable slots render as disabled options
-// with their reason in the label, so they can be seen but never
-// selected. Bookable options come first, so the default selection
-// is always a slot the server would accept. The server action
-// revalidates the slot anyway — disabled styling is never the
-// guard, it is only the display.
+// One clear path, no dropdowns, no walls of cards, no disabled
+// grey options: 1) pick a day, 2) pick a time, 3) reason for
+// visit, 4) review, 5) pay. Only bookable slots ever appear as
+// chips (see components/slot-picker.tsx); the server action
+// revalidates the slot anyway — the picker filter is display
+// only, never the guard.
+//
+// What the submit still sends is unchanged: slotId + reason to
+// bookAction, exactly as before. Paid bookings still go through
+// the same Razorpay Checkout panel (PaymentCheckout, untouched):
+// the slot is held Pending for 15 minutes while the patient
+// pays, and cancelling a paid booking still starts a full refund
+// to the original payment method, tracked separately from the
+// cancellation. That Day 4 information is preserved here in
+// short plain words on the review step — simplified, never
+// removed. Free bookings still redirect to the dashboard.
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { bookAction } from "@/lib/actions/booking";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { SlotPicker, type SlotChoice } from "@/components/slot-picker";
 import { formatDate, formatTime } from "@/lib/time";
 import { PaymentCheckout } from "@/components/payment-checkout";
 import type { DoctorSlotView } from "@/lib/services/doctors";
@@ -30,35 +39,61 @@ export type BookableSlot = Pick<
   | "state"
 >;
 
-const STATE_LABEL: Record<BookableSlot["state"], string> = {
-  available: "Available",
-  "fully-booked": "Fully booked",
-  unavailable: "Unavailable",
-  passed: "Passed",
-};
+const STEPS = ["Day & time", "Reason", "Review"] as const;
+
+function StepHeader({ step }: { step: number }) {
+  return (
+    <ol className="flex items-center gap-1.5" aria-label="Booking steps">
+      {STEPS.map((label, i) => {
+        const done = i < step;
+        const current = i === step;
+        return (
+          <li key={label} className="flex items-center gap-1.5">
+            <span
+              className={
+                current
+                  ? "rounded-full bg-brand-700 px-3 py-1 text-xs font-bold text-white"
+                  : done
+                    ? "rounded-full bg-brand-100 px-3 py-1 text-xs font-bold text-brand-800"
+                    : "rounded-full bg-surface-subtle px-3 py-1 text-xs font-medium text-ink-faint"
+              }
+            >
+              {done ? "✓ " : ""}
+              {i + 1}. {label}
+            </span>
+            {i < STEPS.length - 1 && (
+              <span aria-hidden className="text-ink-faint">
+                ›
+              </span>
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
 export function BookingForm({
   slots,
   consultationFee,
+  doctorName,
 }: {
   slots: BookableSlot[];
   /** The doctor's fee as stored (e.g. "500.00"), or null. */
   consultationFee?: string | null;
+  doctorName?: string;
 }) {
   const [state, dispatch, pending] = useActionState(bookAction, {});
+  const [step, setStep] = useState(0);
+  const [selected, setSelected] = useState<SlotChoice | null>(null);
+  const [reason, setReason] = useState("");
 
   const bookable = slots.filter((s) => s.bookable);
-  // Bookable first (in date order), then unavailable ones: the
-  // browser pre-selects the first option, which must be bookable.
-  const ordered = [
-    ...bookable,
-    ...slots.filter((s) => !s.bookable),
-  ];
 
   if (bookable.length === 0) {
     return (
       <p className="text-sm text-slate-600">
-        No bookable slots right now. Check back later, or try another
+        No bookable times right now. Check back later, or try another
         doctor.
       </p>
     );
@@ -89,54 +124,154 @@ export function BookingForm({
   const paidBooking = Number.isFinite(feeNumber) && feeNumber > 0;
 
   return (
-    <form action={dispatch} className="flex flex-col gap-4">
+    <form action={dispatch} className="flex flex-col gap-5">
+      {/* Hidden fields only: the visible UI is chips + textarea.
+          These carry the submission, exactly as the old form did. */}
+      <input type="hidden" name="slotId" value={selected?.slotId ?? ""} />
+      {step === 2 && <input type="hidden" name="reason" value={reason} />}
+      <StepHeader step={step} />
       {state.error && (
-        <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+        <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
           {state.error}
         </p>
       )}
-      {paidBooking && (
-        <p className="rounded-md bg-teal-50 p-3 text-sm text-teal-900">
-          Consultation fee ₹{consultationFee}: payment is required to
-          confirm this booking. Your slot is held for 15 minutes
-          while you pay.
-        </p>
+
+      {step === 0 && (
+        <>
+          <SlotPicker
+            slots={bookable}
+            selectedSlotId={selected?.slotId ?? null}
+            onSelect={setSelected}
+          />
+          <Button
+            type="button"
+            size="lg"
+            className="w-full sm:w-auto sm:self-start"
+            disabled={!selected}
+            onClick={() => setStep(1)}
+          >
+            Continue with this time →
+          </Button>
+        </>
       )}
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="slotId">Choose a time slot (IST)</Label>
-        <select
-          id="slotId"
-          name="slotId"
-          required
-          className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
-        >
-          {ordered.map((s) => (
-            <option
-              key={s.slotId}
-              value={s.slotId}
-              disabled={!s.bookable}
+
+      {step === 1 && (
+        <>
+          <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3">
+            <p className="text-sm font-bold text-brand-800">
+              {selected
+                ? `${formatDate(selected.date)} · ${formatTime(selected.startTime)} – ${formatTime(selected.endTime)}`
+                : "No time picked yet"}
+            </p>
+            <Button
+              type="button"
+              className="mt-1 h-auto justify-start p-0 text-sm font-medium text-brand-700 underline hover:bg-transparent hover:text-brand-800"
+              onClick={() => setStep(0)}
             >
-              {formatDate(s.date)}, {formatTime(s.startTime)} –{" "}
-              {formatTime(s.endTime)}{" "}
-              {s.bookable
-                ? `(${s.remaining} left)`
-                : `(${STATE_LABEL[s.state]})`}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="reason">Reason for visit</Label>
-        <Textarea
-          id="reason"
-          name="reason"
-          required
-          placeholder="Briefly describe why you are visiting, e.g. fever and cough for 3 days."
-        />
-      </div>
-      <Button type="submit" disabled={pending}>
-        {pending ? "Booking…" : "Book appointment"}
-      </Button>
+              Change day or time
+            </Button>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="reason">Why are you visiting?</Label>
+            <Textarea
+              id="reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              required
+              placeholder="Briefly describe why you are visiting, e.g. fever and cough for 3 days."
+            />
+            <p className="text-xs text-ink-faint">
+              This helps the doctor prepare for your visit.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="lg"
+              disabled={reason.trim().length === 0}
+              onClick={() => setStep(2)}
+            >
+              Review booking →
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              onClick={() => setStep(0)}
+            >
+              Back
+            </Button>
+          </div>
+        </>
+      )}
+
+      {step === 2 && selected && (
+        <>
+          <div className="flex flex-col gap-4 rounded-2xl border border-border bg-gradient-to-br from-brand-50 via-surface to-amber-50 p-5">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink-faint">
+                Your appointment
+              </p>
+              {doctorName && (
+                <p className="mt-1 text-lg font-bold text-ink">{doctorName}</p>
+              )}
+              <p className="mt-1 text-base font-semibold text-brand-800">
+                {formatDate(selected.date)} ·{" "}
+                {formatTime(selected.startTime)} –{" "}
+                {formatTime(selected.endTime)} (IST)
+              </p>
+              <p className="mt-1 text-sm text-ink-soft">
+                Reason: {reason.trim()}
+              </p>
+            </div>
+            <div className="border-t border-border pt-3 text-sm text-ink-soft">
+              {paidBooking ? (
+                <>
+                  <p className="font-bold text-ink">
+                    Consultation fee: ₹{consultationFee}
+                  </p>
+                  <p className="mt-1">
+                    You pay now to confirm. Your time is held for 15
+                    minutes while you pay — if payment does not
+                    finish in time, the hold ends and the time opens
+                    up again.
+                  </p>
+                </>
+              ) : (
+                <p>
+                  No payment needed for this booking — it confirms
+                  straight away.
+                </p>
+              )}
+              <p className="mt-2">
+                If you cancel later, your time opens up for other
+                patients and the booking cannot be restored.
+                {paidBooking
+                  ? " Cancelling a paid booking starts a full refund to your original payment method. The refund is tracked separately — cancelling does not mean the money has arrived yet."
+                  : " Nothing was paid, so there is nothing to refund."}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" size="lg" disabled={pending}>
+              {pending
+                ? "Booking…"
+                : paidBooking
+                  ? "Continue to payment →"
+                  : "Confirm booking"}
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              disabled={pending}
+              onClick={() => setStep(1)}
+            >
+              Back
+            </Button>
+          </div>
+        </>
+      )}
     </form>
   );
 }

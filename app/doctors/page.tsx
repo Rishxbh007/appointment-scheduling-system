@@ -44,10 +44,12 @@ export default async function DoctorsPage({
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
-      <h1 className="text-3xl font-bold">Find a doctor</h1>
-      <p className="mt-1 text-slate-600">
-        Search by specialization (e.g. Cardiology) or doctor name.
-      </p>
+      <div className="rounded-3xl border border-brand-100 bg-gradient-to-br from-brand-50 via-surface to-amber-50 px-6 py-6 shadow-sm">
+        <h1 className="text-3xl font-bold">Find a doctor</h1>
+        <p className="mt-1 text-slate-600">
+          Search by specialization (e.g. Cardiology) or doctor name.
+        </p>
+      </div>
       <form method="get" action="/doctors" className="mt-6 flex gap-2">
         <Input
           name="q"
@@ -72,11 +74,27 @@ export default async function DoctorsPage({
       ) : (
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {doctors.map((d) => (
-            <Card key={d.doctorId}>
+            <Card
+              key={d.doctorId}
+              className="transition-all hover:-translate-y-0.5 hover:shadow-md"
+            >
               <CardHeader>
                 <CardTitle>{formatDoctorName(d.name)}</CardTitle>
                 <CardDescription>
-                  {d.specializationNames.join(", ") || "General practice"}
+                  {d.specializationNames.length > 0 ? (
+                    <span className="flex flex-wrap gap-1.5">
+                      {d.specializationNames.map((s) => (
+                        <span
+                          key={s}
+                          className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-800"
+                        >
+                          {s}
+                        </span>
+                      ))}
+                    </span>
+                  ) : (
+                    "General practice"
+                  )}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -85,10 +103,12 @@ export default async function DoctorsPage({
                   {d.experienceYears !== null &&
                     ` · ${d.experienceYears} yrs experience`}
                 </p>
-                <p className="mt-1 text-sm font-medium">
-                  {d.consultationFee !== null
-                    ? `₹${d.consultationFee} consultation`
-                    : "Fee on request"}
+                <p className="mt-2">
+                  <span className="rounded-full bg-warning-soft px-2.5 py-1 text-xs font-bold text-warning-strong">
+                    {d.consultationFee !== null
+                      ? `₹${d.consultationFee} consultation`
+                      : "Fee on request"}
+                  </span>
                 </p>
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <Link href={`/doctors/${d.doctorId}`}>

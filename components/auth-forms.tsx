@@ -149,17 +149,17 @@ function OAuthButtons({
               {variant === "stack" ? `Continue with ${p.label}` : p.label}
             </a>
           ) : (
-            <button
+            <Button
               key={p.id}
               type="button"
               disabled
               aria-disabled="true"
               aria-label={`Continue with ${p.label}`}
-              className={`inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-2.5 ${radius} border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-400`}
+              className={`inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-2.5 ${radius} border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-400 disabled:opacity-100`}
             >
               <ProviderMark id={p.id} />
               {variant === "stack" ? `Continue with ${p.label}` : p.label}
-            </button>
+            </Button>
           ),
         )}
       </div>
@@ -246,7 +246,7 @@ function PasswordField({
           "h-12 rounded-xl border-slate-300 pr-16 focus:ring-teal-600"
         }
       />
-      <button
+      <Button
         type="button"
         onClick={() => setVisible((v) => !v)}
         aria-label={visible ? "Hide password" : "Show password"}
@@ -278,7 +278,7 @@ function PasswordField({
           )}
           {visible ? "Hide" : "Show"}
         </span>
-      </button>
+      </Button>
     </div>
   );
 }
@@ -656,7 +656,7 @@ export function LoginForm({
           <div className="mt-6 flex flex-col gap-3">
             <OAuthButtons oauth={oauth} variant="stack" />
             {!emailOpen && (
-              <button
+              <Button
                 type="button"
                 onClick={() => setEmailOpen(true)}
                 aria-expanded={false}
@@ -664,7 +664,7 @@ export function LoginForm({
                 className="inline-flex h-12 w-full items-center justify-center rounded-full border border-border bg-white px-4 text-sm font-medium text-ink transition-colors hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
               >
                 Continue with email
-              </button>
+              </Button>
             )}
           </div>
 
@@ -908,13 +908,13 @@ export function RegisterForm({
                   collapsed block, and a failed submit stays on step 2
                   (step is component state, untouched by the action). */}
                 <div className="flex items-center justify-between">
-                  <button
+                  <Button
                     type="button"
                     onClick={() => setStep(1)}
-                    className="rounded text-sm font-medium text-brand-700 hover:text-brand-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
+                    className="rounded text-sm font-medium text-brand-700 hover:bg-transparent hover:text-brand-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
                   >
                     ← Back
-                  </button>
+                  </Button>
                   <span className="text-xs text-ink-faint">
                     Step 2 of 2
                   </span>

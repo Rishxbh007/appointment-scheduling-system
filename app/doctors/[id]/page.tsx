@@ -7,10 +7,10 @@ import {
   getFavoriteDoctorIds,
   formatDoctorName,
 } from "@/lib/services/doctors";
-import type { DoctorSlotView } from "@/lib/services/doctors";
 import { getPatientIdByUser } from "@/lib/services/accounts";
 import { FavoriteToggle } from "@/components/favorite-toggle";
 import { BookingForm } from "@/components/booking-form";
+import { AvailableTimes } from "@/components/slot-picker";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -19,7 +19,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { formatDate, formatTime } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -50,38 +49,33 @@ export default async function DoctorPage({
     }
   }
 
-  // Group ALL upcoming slots by date for display, including
-  // unavailable ones: a date with no bookable slots still shows
-  // its slots marked unavailable, instead of empty silence.
-  const byDate = new Map<string, typeof profile.slots>();
-  for (const s of profile.slots) {
-    const list = byDate.get(s.date) ?? [];
-    list.push(s);
-    byDate.set(s.date, list);
-  }
-
-  // Text state label per slot. The label is the signal — colour
-  // alone is never used to convey availability.
-  function slotStateText(s: DoctorSlotView): string {
-    if (s.bookable) return `${s.remaining} of ${s.maxAppointments} left`;
-    if (s.state === "fully-booked")
-      return `Fully booked (0 of ${s.maxAppointments} left)`;
-    if (s.state === "unavailable") return "Unavailable";
-    return "Passed";
-  }
-
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
-      <Link href="/doctors" className="text-sm underline">
+      <Link
+        href="/doctors"
+        className="text-sm font-medium text-brand-700 hover:text-brand-800"
+      >
         ← All doctors
       </Link>
       <div className="mt-4 grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
+        <Card className="overflow-hidden">
+          <CardHeader className="bg-gradient-to-br from-brand-50 via-surface to-amber-50">
             <CardTitle className="text-2xl">{formatDoctorName(profile.name)}</CardTitle>
             <CardDescription>
-              {profile.specializationNames.join(", ") ||
-                "General practice"}
+              {profile.specializationNames.length > 0 ? (
+                <span className="flex flex-wrap gap-1.5">
+                  {profile.specializationNames.map((s) => (
+                    <span
+                      key={s}
+                      className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-800"
+                    >
+                      {s}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                "General practice"
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-1 text-sm">
@@ -97,9 +91,11 @@ export default async function DoctorPage({
             </p>
             <p>
               <span className="font-medium">Consultation fee: </span>
-              {profile.consultationFee !== null
-                ? `₹${profile.consultationFee}`
-                : "On request"}
+              <span className="rounded-full bg-warning-soft px-2.5 py-1 text-xs font-bold text-warning-strong">
+                {profile.consultationFee !== null
+                  ? `₹${profile.consultationFee}`
+                  : "On request"}
+              </span>
             </p>
             <p>
               <span className="font-medium">Contact: </span>
@@ -118,12 +114,12 @@ export default async function DoctorPage({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="shadow-md ring-1 ring-brand-100">
           <CardHeader>
             <CardTitle>Book an appointment</CardTitle>
             <CardDescription>
-              Pick an available window and tell the doctor why you are
-              visiting.
+              Choose a day, pick a time, tell the doctor why you are
+              visiting, then review and pay.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -131,6 +127,7 @@ export default async function DoctorPage({
               <BookingForm
                 slots={profile.slots}
                 consultationFee={profile.consultationFee}
+                doctorName={formatDoctorName(profile.name)}
               />
             ) : session?.role === "Doctor" ? (
               <p className="text-sm text-slate-600">
@@ -152,43 +149,15 @@ export default async function DoctorPage({
         </Card>
       </div>
 
-      <h2 className="mt-10 text-xl font-bold">Upcoming windows</h2>
+      <h2 className="mt-10 flex items-center gap-2 text-xl font-bold">
+        <span className="h-2.5 w-2.5 rounded-full bg-brand-600" />
+        Available times
+      </h2>
       <p className="mt-1 text-sm text-slate-600">
-        All times shown in IST. Slots marked Fully booked, Unavailable
-        or Passed cannot be booked.
+        All times shown in IST. Only days and times that are actually
+        available are listed — pick one in the booking card above.
       </p>
-      {byDate.size === 0 ? (
-        <p className="mt-2 text-slate-600">
-          No upcoming windows right now. Check back later.
-        </p>
-      ) : (
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[...byDate.entries()].map(([date, daySlots]) => (
-            <Card key={date}>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  {formatDate(date)}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-1">
-                {daySlots.map((s) => (
-                  <p
-                    key={s.slotId}
-                    className={
-                      s.bookable
-                        ? "text-sm text-slate-700"
-                        : "text-sm text-slate-500"
-                    }
-                  >
-                    {formatTime(s.startTime)} – {formatTime(s.endTime)}
-                    <span> · {slotStateText(s)}</span>
-                  </p>
-                ))}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      <AvailableTimes slots={profile.slots} />
     </div>
   );
 }

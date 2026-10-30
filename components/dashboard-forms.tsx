@@ -12,8 +12,17 @@ import {
   toggleSlotAction,
 } from "@/lib/actions/booking";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SlotPicker, type SlotChoice } from "@/components/slot-picker";
 import { formatDate, formatTime } from "@/lib/time";
 import { formatPaise } from "@/lib/format";
 import type { BookableSlot } from "./booking-form";
@@ -257,9 +266,10 @@ export function PatientCancelButton({
   );
 }
 
-/** Confirm step of a reschedule. Kept as its own component so it can
- * be remounted (fresh action state) for every new attempt: the
- * parent passes a new key each time the picker opens. */
+/** Confirm step of a reschedule, inside the reschedule dialog.
+ * Kept as its own component so it can be remounted (fresh action
+ * state) for every new attempt: the parent passes a new key each
+ * time the dialog opens. */
 function RescheduleConfirmForm({
   appointmentId,
   newSlotId,
@@ -289,29 +299,24 @@ function RescheduleConfirmForm({
     if (state.success) onDone();
   }, [state.success, onDone]);
   return (
-    <form
-      action={dispatch}
-      role="alertdialog"
-      aria-label="Confirm reschedule"
-      className="max-w-sm rounded-lg border border-slate-200 bg-slate-50/60 p-3"
-    >
+    <form action={dispatch} className="flex flex-col gap-3">
       <input type="hidden" name="appointmentId" value={appointmentId} />
       <input type="hidden" name="newSlotId" value={newSlotId} />
       <p className="text-sm font-medium">
         Move your appointment with {doctorName}?
       </p>
-      <p className="mt-2 text-sm text-slate-600">
+      <p className="text-sm text-slate-600">
         From: {oldDateLabel} at {oldTimeLabel}
       </p>
       <p className="text-sm font-medium text-slate-800">
         To: {newDateLabel} at {newTimeLabel}
       </p>
-      <p className="mt-2 text-sm text-slate-600">
+      <p className="text-sm text-slate-600">
         Your booking, its status and its reason stay exactly as they
         are — only the time changes. If this fails, your original
         appointment is untouched.
       </p>
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button type="submit" size="sm" disabled={pending}>
           {pending ? "Rescheduling…" : "Confirm reschedule"}
         </Button>
@@ -331,11 +336,12 @@ function RescheduleConfirmForm({
 }
 
 /** Patient moves one of their own bookings to another slot of the
- * same doctor. Three steps: pick a genuinely bookable slot, review
- * the old and new times, then confirm. The picker offers bookable
- * slots only — the profile now returns unavailable slots too, so
- * the bookable filter below is load-bearing, not decorative. The
- * server revalidates the slot at confirmation time, so a stale or
+ * same doctor, in the SAME day-chip + time-chip pattern as
+ * booking. A Radix Dialog holds the flow: pick a day, pick a
+ * time, review the old and new times, then confirm. The picker
+ * offers bookable slots only (current slot excluded) — no
+ * dropdown, no seat counts, no state words. The server
+ * revalidates the slot at confirmation time, so a stale or
  * forged slot is still rejected. */
 export function PatientRescheduleControl({
   appointmentId,
@@ -355,19 +361,17 @@ export function PatientRescheduleControl({
   const options = slots.filter(
     (s) => s.slotId !== currentSlotId && s.bookable,
   );
-  const [stage, setStage] = useState<"idle" | "pick" | "confirm" | "done">(
-    "idle",
-  );
-  const [selectedSlotId, setSelectedSlotId] = useState<number | null>(null);
+  const [open, setOpen] = useState(false);
+  const [stage, setStage] = useState<"pick" | "review">("pick");
+  const [selected, setSelected] = useState<SlotChoice | null>(null);
   const [runId, setRunId] = useState(0);
   const [doneLabel, setDoneLabel] = useState("");
-  const selected =
-    options.find((s) => s.slotId === selectedSlotId) ?? null;
 
-  const openPicker = () => {
-    setSelectedSlotId(options[0]?.slotId ?? null);
-    setRunId((n) => n + 1);
+  const openDialog = () => {
+    setSelected(null);
     setStage("pick");
+    setRunId((n) => n + 1);
+    setOpen(true);
   };
 
   const handleDone = () => {
@@ -376,10 +380,11 @@ export function PatientRescheduleControl({
         `${formatDate(selected.date)}, ${formatTime(selected.startTime)} – ${formatTime(selected.endTime)}`,
       );
     }
-    setStage("done");
+    setOpen(false);
+    setStage("pick");
   };
 
-  if (stage === "done") {
+  if (doneLabel) {
     return (
       <div
         role="status"
@@ -396,7 +401,7 @@ export function PatientRescheduleControl({
           size="sm"
           variant="outline"
           className="mt-3"
-          onClick={() => setStage("idle")}
+          onClick={() => setDoneLabel("")}
         >
           Close
         </Button>
@@ -404,93 +409,64 @@ export function PatientRescheduleControl({
     );
   }
 
-  if (stage === "confirm" && selected) {
-    return (
-      <RescheduleConfirmForm
-        key={runId}
-        appointmentId={appointmentId}
-        newSlotId={selected.slotId}
-        doctorName={doctorName}
-        oldDateLabel={oldDateLabel}
-        oldTimeLabel={oldTimeLabel}
-        newDateLabel={formatDate(selected.date)}
-        newTimeLabel={`${formatTime(selected.startTime)} – ${formatTime(selected.endTime)}`}
-        onDone={handleDone}
-        onBack={() => setStage("pick")}
-      />
-    );
-  }
-
-  if (stage === "pick") {
-    const selectId = `reschedule-slot-${appointmentId}`;
-    return (
-      <div
-        role="dialog"
-        aria-label="Pick a new time slot"
-        className="max-w-sm rounded-lg border border-slate-200 bg-slate-50/60 p-3"
-      >
-        {options.length === 0 ? (
-          <>
+  return (
+    <>
+      <Button type="button" size="sm" variant="outline" onClick={openDialog}>
+        Reschedule
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pick a new time</DialogTitle>
+            <DialogDescription>
+              Your current appointment is {oldDateLabel} at{" "}
+              {oldTimeLabel}. Only times that are actually available
+              are shown.
+            </DialogDescription>
+          </DialogHeader>
+          {options.length === 0 ? (
             <p className="text-sm text-slate-600">
-              No other available slots for this doctor right now.
+              No other available times for this doctor right now.
               Check back later, or keep your current appointment.
             </p>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="mt-3"
-              onClick={() => setStage("idle")}
-            >
-              Close
-            </Button>
-          </>
-        ) : (
-          <>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={selectId}>Pick a new time slot (IST)</Label>
-              <select
-                id={selectId}
-                value={selectedSlotId ?? ""}
-                onChange={(e) => setSelectedSlotId(Number(e.target.value))}
-                className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
-              >
-                {options.map((s) => (
-                  <option key={s.slotId} value={s.slotId}>
-                    {formatDate(s.date)}, {formatTime(s.startTime)} –{" "}
-                    {formatTime(s.endTime)} ({s.remaining} left)
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                disabled={!selected}
-                onClick={() => setStage("confirm")}
-              >
-                Review new time
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setStage("idle")}
-              >
-                Cancel
-              </Button>
-            </div>
-          </>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <Button type="button" size="sm" variant="outline" onClick={openPicker}>
-      Reschedule
-    </Button>
+          ) : stage === "pick" ? (
+            <>
+              <SlotPicker
+                slots={options}
+                selectedSlotId={selected?.slotId ?? null}
+                onSelect={setSelected}
+                excludeSlotId={currentSlotId}
+              />
+              <DialogFooter>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!selected}
+                  onClick={() => setStage("review")}
+                >
+                  Review new time
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            selected && (
+              <RescheduleConfirmForm
+                key={runId}
+                appointmentId={appointmentId}
+                newSlotId={selected.slotId}
+                doctorName={doctorName}
+                oldDateLabel={oldDateLabel}
+                oldTimeLabel={oldTimeLabel}
+                newDateLabel={formatDate(selected.date)}
+                newTimeLabel={`${formatTime(selected.startTime)} – ${formatTime(selected.endTime)}`}
+                onDone={handleDone}
+                onBack={() => setStage("pick")}
+              />
+            )
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

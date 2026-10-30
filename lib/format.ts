@@ -2,6 +2,18 @@
 // components (no database or Node imports here, so client
 // components can import this module safely).
 
+/**
+ * Remaining seats in a slot, in plain human wording — never a
+ * "3 of 3 left" fraction. The count itself always comes from the
+ * caller's real slot data; this only words it. 0 is "Fully booked"
+ * (callers showing a bookable-only picker never hit that branch).
+ */
+export function formatSeatsLeft(remaining: number): string {
+  if (remaining <= 0) return "Fully booked";
+  if (remaining === 1) return "Last seat";
+  return `${remaining} seats left`;
+}
+
 /** Integer paise → "₹500.00". Never invents amounts: the input is
  * always a real amount_paise from the payments table. */
 export function formatPaise(amountPaise: number): string {
