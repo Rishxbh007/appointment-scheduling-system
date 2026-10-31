@@ -13,10 +13,13 @@ are handled, and how to add a real SMS provider.
 | Patient SMS opt-in | `notification_preferences` in `lib/db/schema.ts` |
 | Event + reminder logic, dispatcher, retry | `lib/services/notifications.ts` |
 | Email provider (Gmail SMTP) | `lib/services/mailer.ts` |
-| SMS provider (logged driver) | `lib/services/sms.ts` |
+| SMS providers (logged driver + Twilio) | `lib/services/sms.ts` |
 | Reminder creation (booking) + reschedule shift | `lib/services/booking.ts` |
 | Cancel/sweep reminder cleanup | `lib/services/booking.ts`, `lib/services/payments.ts` |
 | Preferences action + form | `lib/actions/notifications.ts`, `components/notification-preferences-form.tsx` |
+| Notifications page (history + preferences) | `app/dashboard/notifications/page.tsx` |
+| Header bell → notifications page | `components/site-header.tsx` |
+| First-visit consent banner | `components/notification-consent-banner.tsx` |
 | Cron (due reminders + outbox retries + sweep) | `app/api/cron/reminders/route.ts` |
 | Tests | `lib/services/__tests__/day5-notifications.test.ts` (`npm test`) |
 
@@ -128,27 +131,67 @@ pretends otherwise. The outbox row is still created and
 audited, and the log line is the delivery record. Rows with a
 `log-` reference are exactly the rows that were log-only.
 
-**Adding a real provider (Twilio, MSG91, …):**
+**Real SMS via Twilio (implemented, inactive until credentials exist).**
+`SMS_PROVIDER=twilio` selects the Twilio provider in
+`lib/services/sms.ts` (Messages API over HTTPS, no SDK). It
+needs three env vars — same names locally and in Vercel:
+`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`,
+`TWILIO_FROM_NUMBER` (the Twilio number). With any of them
+missing, sending throws "not configured" instead of
+fake-sending.
 
-1. Create the provider account and get its credentials.
-2. In `lib/services/sms.ts`, write one new provider with the
-   same `{ send }` shape (credentials from env, throws on
-   failure, resolves to the provider's message reference).
-3. Point `getSmsProvider()` at it for its `SMS_PROVIDER` value.
-4. Set `SMS_PROVIDER` + the credential env vars in Vercel.
-5. No caller changes: the notifications service, the cron, and
-   the preferences UI all keep working through the same
-   interface.
+Free-trial checklist (no card to sign up, 100 free SMS, 30 days):
+1. Sign up at Twilio and verify your own phone number (the
+   sign-up number is auto-verified).
+2. Get a trial number from the console.
+3. Copy the Account SID + Auth Token + trial number into
+   `.env.local` AND Vercel (same names), and set
+   `SMS_PROVIDER=twilio`.
+4. On the dashboard, save the same phone number and turn SMS
+   on (the consent banner asks on first visit).
+5. Make a test booking: the SMS rows on the notifications page
+   will carry Twilio SIDs instead of `log-` references.
+
+Trial limits, honestly: texts can only go to numbers verified
+on the account (up to 5), texts are restricted to the sign-up
+country, trial texts begin with "Sent from a Twilio trial
+account", and the trial expires after 30 days. Upgrading
+removes all of these.
+
+**Adding another provider (MSG91, …)** — same pattern: one new
+provider in `lib/services/sms.ts` with the same `{ send }`
+shape, credentials from env, pointed at by `getSmsProvider()`.
+No caller changes.
 
 A `SMS_PROVIDER` value with no implementation returns null,
 and sending throws "SMS provider '<name>' is not configured"
 — a misconfigured env fails loudly, never fake-sends.
 
+## Notifications page + consent banner
+
+- **Bell, top-right of every page** (signed-in users): links
+  to `/dashboard/notifications`. The pill nav keeps its three
+  tabs; the bell sits beside Sign out, like other apps.
+- **The page** (`/dashboard/notifications`): the patient's SMS
+  preferences form on top, then the full history — every real
+  email + SMS about their appointments, newest first, with
+  channel, status, subject, body, and time. Doctors see the
+  rows addressed to them (email only) plus a note that SMS is
+  patient-only. Nothing on the page is a demo entry.
+- **Consent banner**: on the patient's first dashboard visit
+  (no preferences row yet), a banner at the top asks "Can we
+  send you SMS updates?" with a phone field and Allow SMS /
+  Email only. Either answer records a row, so it never asks
+  again; the choice can still be changed on the notifications
+  page. The old preferences card at the bottom of the
+  dashboard is gone — it moved onto the notifications page.
+
 ## Preferences
 
-- SMS is **off by default**. The patient dashboard has a
-  "Notification preferences" card: a phone-number field + an
-  SMS opt-in checkbox.
+- SMS is **off by default**. The notifications page has the
+  SMS preferences form: a phone-number field + an SMS opt-in
+  checkbox. The dashboard asks once, up front, via the consent
+  banner (see above).
 - Turning SMS on requires a phone number (there is nothing to
   text otherwise). Turning it off cancels the patient's
   Pending SMS reminders at once.

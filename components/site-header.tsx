@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   ArrowRight,
+  Bell,
   Home,
   LayoutDashboard,
   Stethoscope,
@@ -221,6 +222,15 @@ export function SiteHeader({
         )}
 
         <div className="flex items-center gap-2 sm:gap-4">
+          {signedIn && (
+            <Link
+              href="/dashboard/notifications"
+              aria-label="Notifications"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-ink-soft transition-colors hover:text-ink"
+            >
+              <Bell size={18} strokeWidth={1.8} />
+            </Link>
+          )}
           {signedIn ? (
             <form action={logoutAction}>
               <Button

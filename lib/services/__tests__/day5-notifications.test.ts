@@ -15,6 +15,7 @@ import {
   buildSmsReminderContent,
   dedupKeyFor,
   nextAttemptAt,
+  notificationEventLabel,
   parseReminderIntervals,
   reminderScheduledAt,
   reminderScheduledAtHours,
@@ -208,4 +209,17 @@ test("reminder subjects name the interval honestly", () => {
     buildReminderContent("Dr. Test", "2026-11-02", "09:00", "09:30", 48)
       .subject.includes("in 48 hours"),
   );
+});
+
+test("notification event labels: plain words for every event", () => {
+  assert.equal(notificationEventLabel("booking_created"), "Appointment confirmed");
+  assert.equal(notificationEventLabel("booking_cancelled"), "Appointment cancelled");
+  assert.equal(notificationEventLabel("booking_rescheduled"), "Appointment moved");
+  assert.equal(notificationEventLabel("payment_succeeded"), "Payment received");
+  assert.equal(notificationEventLabel("payment_failed"), "Payment failed");
+  assert.equal(notificationEventLabel("refund_initiated"), "Refund initiated");
+  assert.equal(notificationEventLabel("refund_processed"), "Refund processed");
+  assert.equal(notificationEventLabel("refund_failed"), "Refund failed");
+  assert.equal(notificationEventLabel("reminder"), "Appointment reminder");
+  assert.equal(notificationEventLabel("something_new"), "Appointment update");
 });

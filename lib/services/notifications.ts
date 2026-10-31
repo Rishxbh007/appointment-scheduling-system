@@ -59,7 +59,7 @@
 //     The same holds for SMS: opting in later does not create
 //     SMS reminders for bookings made before the opt-in.
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   appointments,
@@ -70,6 +70,7 @@ import {
   slots,
   users,
   type Notification,
+  type NotificationPreference,
 } from "@/lib/db/schema";
 import {
   formatDate,
@@ -565,6 +566,114 @@ export function buildSmsContent(
 }
 
 /**
+ * Plain-words label for one event, for the notifications page.
+ * Pure, so it is unit-tested.
+ */
+export function notificationEventLabel(event: string): string {
+  switch (event) {
+    case "booking_created":
+      return "Appointment confirmed";
+    case "booking_cancelled":
+      return "Appointment cancelled";
+    case "booking_rescheduled":
+      return "Appointment moved";
+    case "payment_succeeded":
+      return "Payment received";
+    case "payment_failed":
+      return "Payment failed";
+    case "refund_initiated":
+      return "Refund initiated";
+    case "refund_processed":
+      return "Refund processed";
+    case "refund_failed":
+      return "Refund failed";
+    case "reminder":
+      return "Appointment reminder";
+    default:
+      return "Appointment update";
+  }
+}
+
+/** One row of the notifications page: the real outbox row, newest first. */
+export type NotificationHistoryRow = {
+  notificationId: number;
+  appointmentId: number | null;
+  channel: string;
+  event: string;
+  subject: string;
+  body: string;
+  status: string;
+  scheduledAt: Date | null;
+  sentAt: Date | null;
+  failureReason: string | null;
+  providerRef: string | null;
+  createdAt: Date;
+};
+
+const NOTIFICATION_HISTORY_LIMIT = 50;
+
+const historyColumns = {
+  notificationId: notifications.notificationId,
+  appointmentId: notifications.appointmentId,
+  channel: notifications.channel,
+  event: notifications.event,
+  subject: notifications.subject,
+  body: notifications.body,
+  status: notifications.status,
+  scheduledAt: notifications.scheduledAt,
+  sentAt: notifications.sentAt,
+  failureReason: notifications.failureReason,
+  providerRef: notifications.providerRef,
+  createdAt: notifications.createdAt,
+};
+
+/**
+ * The patient's own notifications (both channels), newest
+ * first. These are the real outbox rows — including past
+ * emails from before this page existed — never demo entries.
+ */
+export async function listNotificationsForPatient(
+  patientId: number,
+): Promise<NotificationHistoryRow[]> {
+  return db
+    .select(historyColumns)
+    .from(notifications)
+    .innerJoin(
+      appointments,
+      eq(notifications.appointmentId, appointments.appointmentId),
+    )
+    .where(eq(appointments.patientId, patientId))
+    .orderBy(desc(notifications.createdAt))
+    .limit(NOTIFICATION_HISTORY_LIMIT);
+}
+
+/**
+ * The doctor's notifications: only the rows addressed to them
+ * (their email), never the patient's rows for the same
+ * appointments. Doctors are email-only, so these are all email.
+ */
+export async function listNotificationsForDoctor(
+  doctorId: number,
+  doctorEmail: string,
+): Promise<NotificationHistoryRow[]> {
+  return db
+    .select(historyColumns)
+    .from(notifications)
+    .innerJoin(
+      appointments,
+      eq(notifications.appointmentId, appointments.appointmentId),
+    )
+    .where(
+      and(
+        eq(appointments.doctorId, doctorId),
+        eq(notifications.recipientEmail, doctorEmail),
+      ),
+    )
+    .orderBy(desc(notifications.createdAt))
+    .limit(NOTIFICATION_HISTORY_LIMIT);
+}
+
+/**
  * The dedup key for one notification row. Event rows dedup on
  * event + appointment + channel + recipient, so a repeat trigger
  * for the same recipient sends nothing twice — while a
@@ -628,6 +737,25 @@ export function nextAttemptAt(
 }
 
 /**
+ * The patient's preferences row, or null. The lookup itself
+ * never throws: null covers both "never set" and "lookup
+ * failed". Callers that must tell those apart (the cron's
+ * opt-in re-check) use getSmsOptIn instead; the dashboard
+ * banner treats both as "ask", which is safe because
+ * answering is idempotent and the action is the source of
+ * truth.
+ */
+async function selectPreferencesRow(
+  userId: number,
+): Promise<NotificationPreference | null> {
+  const [row] = await db
+    .select()
+    .from(notificationPreferences)
+    .where(eq(notificationPreferences.userId, userId));
+  return row ?? null;
+}
+
+/**
  * The patient's SMS opt-in. True only when a preferences row
  * says so; false when the row is missing or says no. Null when
  * the lookup itself failed — callers must NOT treat a lookup
@@ -635,13 +763,31 @@ export function nextAttemptAt(
  */
 export async function getSmsOptIn(userId: number): Promise<boolean | null> {
   try {
-    const [row] = await db
-      .select()
-      .from(notificationPreferences)
-      .where(eq(notificationPreferences.userId, userId));
+    const row = await selectPreferencesRow(userId);
     return row?.smsOptIn ?? false;
   } catch (err) {
     console.error(`SMS opt-in lookup failed (user ${userId}):`, err);
+    return null;
+  }
+}
+
+/**
+ * The patient's preferences row, or null when they have never
+ * set one (or the lookup failed). Null is what drives the
+ * first-visit consent banner: no row means the app has never
+ * asked, so it asks once, at the top of the dashboard — and
+ * never again after any answer.
+ */
+export async function getNotificationPreferences(
+  userId: number,
+): Promise<NotificationPreference | null> {
+  try {
+    return await selectPreferencesRow(userId);
+  } catch (err) {
+    console.error(
+      `Notification preferences lookup failed (user ${userId}):`,
+      err,
+    );
     return null;
   }
 }
