@@ -29,6 +29,8 @@ export type CareBookNavProps = {
   defaultActive?: number
   active?: number
   onChange?: (index: number, item: CareBookNavItem) => void
+  /** when onChange is set, plain clicks route through it instead of
+    following href, so the nav never reloads the page */
   /** "light" water for bright backgrounds, "dark" for dark ones */
   tone?: "light" | "dark"
   /** icons only */
@@ -542,7 +544,17 @@ export function CareBookNav({
           ref: (el: HTMLElement | null) => { itemRefs.current[i] = el },
           className: "cb-item",
           "aria-current": i === current ? ("page" as const) : undefined,
-          onClick: () => select(i),
+          // When the parent owns navigation (onChange), a plain click
+          // must not follow the href — that would reload the whole
+          // page, killing the drop animation and the WebGL water.
+          // The parent routes client-side instead, so the nav stays
+          // mounted, the drop stretches to the new item, and the water
+          // keeps flowing. Right-click / middle-click still open the
+          // href normally (they never fire onClick).
+          onClick: (e: React.MouseEvent) => {
+            select(i)
+            if (it.href && onChange) e.preventDefault()
+          },
         }
         const content = (
           <>

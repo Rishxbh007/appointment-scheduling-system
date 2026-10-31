@@ -1,11 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   ArrowRight,
   Home,
-  Info,
   LayoutDashboard,
   Stethoscope,
   User,
@@ -24,18 +24,24 @@ import {
 //
 // Middle navigation is the CareBook liquid nav (warm cream + deep teal,
 // matched to the Sunrise Motion landing design): a water-drop pill that
-// stretches toward the item you pick. The pill holds four tabs for every
-// role — Home, Doctors (or Dashboard + My profile for doctors),
-// Dashboard / Get started, and How it works — so it reads as a real nav
-// bar, not a two-item switch. Destinations and role rules are the old
-// ones — a signed-in doctor is never pushed to browse doctors (Dashboard
-// + his own public profile), patients keep Doctors + Dashboard,
-// signed-out visitors get Doctors + Get started instead of Dashboard.
+// stretches toward the item you pick. The pill holds three tabs for every
+// role — Home, Doctors (or Dashboard + My profile for doctors), and
+// Dashboard / Get started — so it reads as a real nav bar, not a
+// two-item switch. Destinations and role rules are the old ones — a
+// signed-in doctor is never pushed to browse doctors (Dashboard + his
+// own public profile), patients keep Doctors + Dashboard, signed-out
+// visitors get Doctors + Get started instead of Dashboard.
 // Get started lives in the pill now, so the old standalone link on the
 // right is gone (no duplicate). The auth-flow pages (/login, /register,
 // /auth/*) keep the classic text links, so the auth pages stay exactly
 // as designed. Sign out / Sign in / Register stay outside the pill, and
 // the layout still resolves the doctor's profile id server-side.
+//
+// Navigation is client-side: the pill's onChange routes with
+// next/navigation instead of following hrefs, so tapping a tab never
+// reloads the page — the nav stays mounted, the drop stretches to the
+// new item, and the WebGL water keeps flowing. (The pill still renders
+// real anchors, so right-click / middle-click open the href normally.)
 //
 // On phones the pill drops to a centred second row, so the wordmark and
 // the actions never overflow a 360px screen.
@@ -49,6 +55,18 @@ export function SiteHeader({
   doctorId: number | null;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  // Optimistic tab: the drop starts stretching toward the tapped item
+  // the instant it is tapped, instead of waiting for the navigation
+  // round-trip — that wait is what read as "lag". Derived, not synced
+  // by effect: the pending tab overrides only while the route still
+  // differs from its href, so the moment the route lands, the real
+  // active tab (same index) takes over with no jump. A failed
+  // navigation reloads the page anyway, resetting state.
+  const [pending, setPending] = useState<{
+    index: number;
+    href: string;
+  } | null>(null);
   const isHome = pathname === "/";
   const isAuth =
     pathname === "/login" ||
@@ -63,7 +81,7 @@ export function SiteHeader({
     : "text-sm font-medium text-ink-soft hover:text-ink hover:underline";
 
   // Liquid-nav items, built from the same role rules as the old links,
-  // four tabs for every role.
+  // three tabs for every role.
   const items: CareBookNavItem[] = [
     {
       label: "Home",
@@ -85,12 +103,6 @@ export function SiteHeader({
         href: doctorId ? `/doctors/${doctorId}` : "/dashboard",
         icon: <User size={18} strokeWidth={1.8} />,
         fx: "spin",
-      },
-      {
-        label: "How it works",
-        href: "/#how-it-works",
-        icon: <Info size={18} strokeWidth={1.8} />,
-        fx: "pop",
       },
     );
   } else {
@@ -115,19 +127,13 @@ export function SiteHeader({
         fx: "pop",
       });
     }
-    items.push({
-      label: "How it works",
-      href: "/#how-it-works",
-      icon: <Info size={18} strokeWidth={1.8} />,
-      fx: "pop",
-    });
   }
 
   // Active pill follows the route, so the drop sits on the page you
   // are actually on (doctor profiles highlight Doctors, except a
-  // doctor's own profile, which highlights My profile). How it works
-  // and Get started are never "active" by path — they are anchors and
-  // entry points, so the drop stays on Home / Doctors while on them.
+  // doctor's own profile, which highlights My profile). Get started is
+  // never "active" by path — it is an entry point, so the drop stays on
+  // Home / Doctors while on it.
   let activeIndex = 0;
   if (pathname === "/") {
     activeIndex = 0;
@@ -147,6 +153,11 @@ export function SiteHeader({
     const dashIdx = items.findIndex((i) => i.label === "Dashboard");
     activeIndex = dashIdx >= 0 ? dashIdx : 0;
   }
+
+  // The tab the pill actually shows: the pending tab while its route
+  // has not landed yet, otherwise the route's own tab.
+  const active =
+    pending && pathname !== pending.href ? pending.index : activeIndex;
 
   return (
     <header
@@ -196,9 +207,15 @@ export function SiteHeader({
           <div className="order-3 mt-2 flex w-full justify-center sm:order-none sm:mt-0 sm:w-auto">
             <CareBookNav
               items={items}
-              active={activeIndex}
+              active={active}
               tone="light"
               sound={false}
+              onChange={(_i, item) => {
+                if (item.href) {
+                  setPending({ index: _i, href: item.href });
+                  router.push(item.href);
+                }
+              }}
             />
           </div>
         )}

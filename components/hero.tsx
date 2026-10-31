@@ -1,15 +1,10 @@
 import Link from "next/link";
-import {
-  Calendar,
-  MessageCircle,
-  Search,
-  Stethoscope,
-} from "lucide-react";
+import { MessageCircle } from "lucide-react";
 
 // CareBook hero — Design 6, "Sunrise Motion", built to match the mockup:
 // - Warm cream background with LARGE bold mint → peach → pink gradient
 //   washes on the right (slow CSS drift, never distracting).
-// - Very large elegant serif headline in dark ink, pill CTAs in deep teal.
+// - Very large elegant serif headline in dark ink, pill CTA in deep teal.
 // - Doctor visual: the real portrait FRAMED in a rounded card, like the
 //   mockup — the cutout sits on a mint → cream → peach gradient inside
 //   the frame, so it reads as a photo card.
@@ -21,8 +16,6 @@ import {
 //   face sits upper-centre, so no floating element touches it. On
 //   mobile every floating element stacks below the frame instead, so
 //   nothing can overlap.
-// - Step pills (find a doctor / pick a time / visit) sit under the
-//   CTAs and link to the doctors list.
 // No statistics anywhere, per the standing rule.
 export default function Hero() {
   return (
@@ -60,40 +53,7 @@ export default function Hero() {
               Book Appointment
               <span aria-hidden="true">→</span>
             </Link>
-            <Link
-              href="#how-it-works"
-              className="inline-flex items-center rounded-full border border-[#0f5a5e]/30 bg-white/60 px-7 py-3.5 text-sm font-semibold text-[#0f5a5e] backdrop-blur transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 active:scale-[0.98]"
-            >
-              How it works
-            </Link>
           </div>
-
-          {/* Step pills */}
-          <ul
-            id="how-it-works"
-            className="mt-10 flex flex-wrap gap-2"
-            aria-label="How booking works"
-          >
-            {[
-              { label: "find a doctor", icon: <Search size={15} /> },
-              { label: "pick a time", icon: <Calendar size={15} /> },
-              { label: "visit", icon: <Stethoscope size={15} /> },
-            ].map((step, i) => (
-              <li
-                key={step.label}
-                className="sunrise-rise"
-                style={{ animationDelay: `${0.3 + i * 0.1}s` }}
-              >
-                <Link
-                  href="/doctors"
-                  className="inline-flex items-center gap-2 rounded-full border border-[#0f5a5e]/20 bg-white/70 px-5 py-2.5 text-sm font-medium text-[#123332] backdrop-blur transition hover:bg-white hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
-                >
-                  <span className="text-[#0f766e]">{step.icon}</span>
-                  {step.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
         </div>
 
         {/* Visual — framed portrait, mockup layout */}
