@@ -64,3 +64,98 @@ body {
 ::selection {
   background: var(--color-brand-100);
 }
+
+/*
+ * Tide word — a small, muted version of the giant textured-word effect:
+ * solid teal letters with light wave lines drifting slowly across them
+ * (two clipped backgrounds: waves over a solid fill). Kept small and
+ * low-contrast on purpose: decoration, not a headline.
+ */
+.tide-word {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='64'%3E%3Cg fill='none' stroke='%23ccfbf1' stroke-width='1.5'%3E%3Cpath d='M0 16 Q 30 4 60 16 T 120 16 T 180 16 T 240 16' opacity='0.9'/%3E%3Cpath d='M0 32 Q 30 20 60 32 T 120 32 T 180 32 T 240 32' opacity='0.6'/%3E%3Cpath d='M0 48 Q 30 36 60 48 T 120 48 T 180 48 T 240 48' opacity='0.45'/%3E%3C/g%3E%3C/svg%3E"),
+    linear-gradient(#0f766e, #0f766e);
+  background-size:
+    240px 64px,
+    100% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  opacity: 0.7;
+  animation: tide-drift 28s linear infinite;
+}
+
+@keyframes tide-drift {
+  from {
+    background-position:
+      0 0,
+      0 0;
+  }
+  to {
+    background-position:
+      240px 0,
+      0 0;
+  }
+}
+
+/*
+ * Sunrise Motion (Design 6) — landing hero animations, plus a small
+ * fit rule for the liquid nav in the header.
+ *
+ * - sunrise-blob: the big mint/peach gradient blobs drift slowly
+ *   (alternate, so they breathe instead of looping visibly).
+ * - sunrise-float: floating hero cards bob gently.
+ * - sunrise-rise: entrance — fade + rise, staggered with inline
+ *   animation-delay on each element.
+ * All three switch off under prefers-reduced-motion.
+ */
+.sunrise-blob {
+  animation: sunrise-drift 22s ease-in-out infinite alternate;
+}
+.sunrise-float {
+  animation: sunrise-float 6s ease-in-out infinite alternate;
+}
+.sunrise-rise {
+  animation: sunrise-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes sunrise-drift {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(-4%, 3%) scale(1.08);
+  }
+}
+@keyframes sunrise-float {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-9px);
+  }
+}
+@keyframes sunrise-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* Tighter liquid-nav items on small phones so the wordmark, the pill
+   and the header actions fit a 360px viewport. */
+@media (max-width: 520px) {
+  .cb-nav .cb-item {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sunrise-blob,
+  .sunrise-float,
+  .sunrise-rise {
+    animation: none !important;
+  }
+}
