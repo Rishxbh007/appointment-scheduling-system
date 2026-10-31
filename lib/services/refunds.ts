@@ -485,6 +485,10 @@ export type PaymentHistoryEntry = {
     refundId: number;
     status: string;
     failureReason: string | null;
+    // The gateway refund id (rfnd_…) once Razorpay has issued
+    // one, or null while none exists — shown in refund tracking
+    // so the patient can match it with Razorpay Dashboard.
+    gatewayRefundId: string | null;
     createdAt: Date;
     updatedAt: Date;
   } | null;
@@ -512,6 +516,7 @@ export async function getPaymentHistoryForPatient(
       refundId: refunds.refundId,
       refundStatus: refunds.status,
       refundFailureReason: refunds.failureReason,
+      refundGatewayId: refunds.gatewayRefundId,
       refundCreatedAt: refunds.createdAt,
       refundUpdatedAt: refunds.updatedAt,
     })
@@ -541,6 +546,7 @@ export async function getPaymentHistoryForPatient(
             refundId: r.refundId,
             status: r.refundStatus as string,
             failureReason: r.refundFailureReason,
+            gatewayRefundId: r.refundGatewayId,
             createdAt: r.refundCreatedAt as Date,
             updatedAt: r.refundUpdatedAt as Date,
           },

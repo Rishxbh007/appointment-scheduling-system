@@ -500,6 +500,120 @@ export default async function DashboardPage() {
                     )}
                   </div>
                 </CardContent>
+                {entry.refund !== null && (
+                  <div className="border-t border-slate-100 px-6 py-4">
+                    <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                      Refund tracking
+                    </p>
+                    <ol className="mt-3 space-y-2 text-sm">
+                      <li className="flex items-start gap-2.5">
+                        <span
+                          aria-hidden="true"
+                          className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-success-strong"
+                        />
+                        <span>
+                          <span className="font-medium">
+                            Refund requested
+                          </span>
+                          <span className="text-slate-600">
+                            {" "}
+                            —{" "}
+                            {formatDate(
+                              entry.refund.createdAt
+                                .toISOString()
+                                .slice(0, 10),
+                            )}
+                          </span>
+                        </span>
+                      </li>
+                      {entry.refund.status === "Failed" ? (
+                        <li className="flex items-start gap-2.5">
+                          <span
+                            aria-hidden="true"
+                            className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-danger-strong"
+                          />
+                          <span>
+                            <span className="font-medium text-danger-strong">
+                              Refund failed
+                            </span>
+                            <span className="text-slate-600">
+                              {" "}
+                              —{" "}
+                              {formatDate(
+                                entry.refund.updatedAt
+                                  .toISOString()
+                                  .slice(0, 10),
+                              )}
+                              . See the status above to retry.
+                            </span>
+                          </span>
+                        </li>
+                      ) : (
+                        <>
+                          <li className="flex items-start gap-2.5">
+                            <span
+                              aria-hidden="true"
+                              className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${entry.refund.status === "Processed" ? "bg-success-strong" : "bg-warning-strong"}`}
+                            />
+                            <span>
+                              <span className="font-medium">
+                                Refund initiated at the payment
+                                provider
+                              </span>
+                              {entry.refund.status === "Initiated" && (
+                                <span className="text-slate-600">
+                                  {" "}
+                                  — waiting for it to complete.
+                                </span>
+                              )}
+                            </span>
+                          </li>
+                          <li className="flex items-start gap-2.5">
+                            <span
+                              aria-hidden="true"
+                              className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${entry.refund.status === "Processed" ? "bg-success-strong" : "bg-slate-300"}`}
+                            />
+                            <span>
+                              <span className="font-medium">
+                                Refund processed
+                              </span>
+                              {entry.refund.status === "Processed" ? (
+                                <span className="text-slate-600">
+                                  {" "}
+                                  —{" "}
+                                  {formatDate(
+                                    entry.refund.updatedAt
+                                      .toISOString()
+                                      .slice(0, 10),
+                                  )}
+                                </span>
+                              ) : (
+                                <span className="text-slate-600">
+                                  {" "}
+                                  — pending.
+                                </span>
+                              )}
+                            </span>
+                          </li>
+                        </>
+                      )}
+                    </ol>
+                    <p className="mt-3 text-xs break-all text-slate-500">
+                      Gateway refund:{" "}
+                      {entry.refund.gatewayRefundId ? (
+                        <span className="font-mono font-semibold text-slate-700">
+                          {entry.refund.gatewayRefundId}
+                        </span>
+                      ) : (
+                        "not issued yet"
+                      )}
+                      {" · "}
+                      Amount: {formatPaise(entry.amountPaise)}
+                      {entry.refund.status === "Processed" &&
+                        " · The bank usually credits the amount within 5–7 working days after processing."}
+                    </p>
+                  </div>
+                )}
               </Card>
             ))}
           </div>
