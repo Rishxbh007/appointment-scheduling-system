@@ -185,6 +185,11 @@ and sending throws "SMS provider '<name>' is not configured"
   again; the choice can still be changed on the notifications
   page. The old preferences card at the bottom of the
   dashboard is gone — it moved onto the notifications page.
+- **Honest labels**: a log-driver SMS row reads "Logged", not
+  "Sent" — "Sent" is reserved for rows a real provider
+  accepted. While SMS is in log-only mode the page also shows
+  a notice saying so, so a "Logged" row is never mistaken for
+  a delivered text.
 
 ## Preferences
 

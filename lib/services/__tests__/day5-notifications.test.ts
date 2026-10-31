@@ -15,6 +15,7 @@ import {
   buildSmsReminderContent,
   dedupKeyFor,
   nextAttemptAt,
+  notificationDisplayStatus,
   notificationEventLabel,
   parseReminderIntervals,
   reminderScheduledAt,
@@ -209,6 +210,14 @@ test("reminder subjects name the interval honestly", () => {
     buildReminderContent("Dr. Test", "2026-11-02", "09:00", "09:30", 48)
       .subject.includes("in 48 hours"),
   );
+});
+
+test("notification display status: log-only SMS rows read as Logged", () => {
+  assert.equal(notificationDisplayStatus("sms", "Sent", "log-123"), "Logged");
+  assert.equal(notificationDisplayStatus("sms", "Sent", "SM123"), "Sent");
+  assert.equal(notificationDisplayStatus("email", "Sent", null), "Sent");
+  assert.equal(notificationDisplayStatus("sms", "Failed", null), "Failed");
+  assert.equal(notificationDisplayStatus("sms", "Pending", null), "Pending");
 });
 
 test("notification event labels: plain words for every event", () => {

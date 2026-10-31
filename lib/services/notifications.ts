@@ -594,6 +594,28 @@ export function notificationEventLabel(event: string): string {
   }
 }
 
+/**
+ * What the notifications page shows for one row's status. A
+ * log-driver SMS row is NOT "Sent" in any sense the user
+ * cares about — no phone received it — so it reads "Logged".
+ * Every other row reads its real status. Pure, unit-tested.
+ */
+export function notificationDisplayStatus(
+  channel: string,
+  status: string,
+  providerRef: string | null,
+): string {
+  if (
+    channel === "sms" &&
+    status === "Sent" &&
+    providerRef !== null &&
+    providerRef.startsWith("log-")
+  ) {
+    return "Logged";
+  }
+  return status;
+}
+
 /** One row of the notifications page: the real outbox row, newest first. */
 export type NotificationHistoryRow = {
   notificationId: number;

@@ -20,6 +20,7 @@ import {
   getSmsOptIn,
   listNotificationsForDoctor,
   listNotificationsForPatient,
+  notificationDisplayStatus,
   notificationEventLabel,
   type NotificationHistoryRow,
 } from "@/lib/services/notifications";
@@ -86,6 +87,20 @@ export default async function NotificationsPage() {
           demo entry.
         </p>
 
+        {isPatient && (process.env.SMS_PROVIDER ?? "log") === "log" && (
+          <Card className="mt-6 border-warning-strong/40 bg-white/80">
+            <CardContent className="pt-6">
+              <p className="text-sm text-slate-600">
+                SMS is in log-only mode right now: no SMS provider
+                is connected, so SMS entries below were recorded
+                but not delivered to any phone. Connect a provider
+                (for example a Twilio free trial) to send real
+                texts.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         {isPatient ? (
           <Card className="mt-6">
             <CardContent className="pt-6">
@@ -120,38 +135,43 @@ export default async function NotificationsPage() {
           </Card>
         ) : (
           <div className="mt-4 space-y-4">
-            {rows.map((row) => (
-              <Card key={row.notificationId}>
-                <CardContent className="pt-6">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold">
-                      {notificationEventLabel(row.event)}
-                    </span>
-                    <span className="text-xs text-slate-500">
-                      {row.channel === "sms" ? "SMS" : "Email"}
-                    </span>
-                    <span
-                      className={`text-xs font-medium ${statusClass(row.status)}`}
-                    >
-                      {row.status}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm font-medium">{row.subject}</p>
-                  <p className="mt-1 text-sm whitespace-pre-wrap text-slate-600">
-                    {row.body}
-                  </p>
-                  <p className="mt-2 text-xs text-slate-500">
-                    {timeLine(row)}
-                    {row.failureReason
-                      ? ` · ${row.failureReason}`
-                      : ""}
-                    {row.channel === "sms" && row.providerRef
-                      ? ` · ref ${row.providerRef}`
-                      : ""}
-                  </p>
-                </CardContent>
-              </Card>
-            ))}
+            {rows.map((row) => {
+              const displayStatus = notificationDisplayStatus(
+                row.channel,
+                row.status,
+                row.providerRef,
+              );
+              return (
+                <Card key={row.notificationId}>
+                  <CardContent className="pt-6">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold">
+                        {notificationEventLabel(row.event)}
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        {row.channel === "sms" ? "SMS" : "Email"}
+                      </span>
+                      <span
+                        className={`text-xs font-medium ${statusClass(displayStatus)}`}
+                      >
+                        {displayStatus}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm font-medium">{row.subject}</p>
+                    <p className="mt-1 text-sm whitespace-pre-wrap text-slate-600">
+                      {row.body}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-500">
+                      {timeLine(row)}
+                      {row.failureReason ? ` · ${row.failureReason}` : ""}
+                      {row.channel === "sms" && row.providerRef
+                        ? ` · ref ${row.providerRef}`
+                        : ""}
+                    </p>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>
