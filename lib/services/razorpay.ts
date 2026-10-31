@@ -18,14 +18,25 @@ function basicAuth(): string {
   return `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString("base64")}`;
 }
 
-/** Razorpay's error body, when it carries a human message. */
+/** Razorpay's error body, when it carries a human message. The
+ * HTTP status and Razorpay's own error code ride along, so a
+ * recorded failure reason says exactly what Razorpay said — a
+ * bare description hid whether it was a 404, a 400, or a code
+ * like BAD_REQUEST_ERROR, and that ambiguity is what made the
+ * 30 Oct refund failures hard to diagnose. */
 async function providerErrorMessage(res: Response): Promise<string> {
   try {
     const data = (await res.json()) as {
-      error?: { description?: unknown };
+      error?: { description?: unknown; code?: unknown };
     };
-    if (typeof data.error?.description === "string") {
-      return data.error.description;
+    const description =
+      typeof data.error?.description === "string"
+        ? data.error.description
+        : null;
+    const code =
+      typeof data.error?.code === "string" ? data.error.code : null;
+    if (description) {
+      return `${description} (status ${res.status}${code ? `, code ${code}` : ""}).`;
     }
   } catch {
     // Fall through to the status message below.

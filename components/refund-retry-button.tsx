@@ -8,10 +8,12 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { retryRefundAction } from "@/lib/actions/payments";
 import { Button } from "@/components/ui/button";
 
 export function RefundRetryButton({ refundId }: { refundId: number }) {
+  const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -38,6 +40,11 @@ export function RefundRetryButton({ refundId }: { refundId: number }) {
             const result = await retryRefundAction(refundId);
             if (result.ok) {
               setDone(true);
+              // Re-read the dashboard from the server so the card
+              // shows the refund's new status at once — without
+              // this the card kept showing the old "Refund failed"
+              // text until a manual reload.
+              router.refresh();
             } else {
               setError(result.error ?? "Could not retry the refund.");
             }
