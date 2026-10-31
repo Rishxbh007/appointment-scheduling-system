@@ -147,6 +147,13 @@ Free-trial checklist (no card to sign up, 100 free SMS, 30 days):
 3. Copy the Account SID + Auth Token + trial number into
    `.env.local` AND Vercel (same names), and set
    `SMS_PROVIDER=twilio`.
+3b. On the 100-free-message trial ONLY, also set
+   `TWILIO_TRIAL_TEMPLATE=sms_appointment_reminders` in
+   Vercel: that trial rejects custom message bodies, so the
+   provider sends the template name and Twilio delivers its
+   generic appointment-reminder text instead of CareBook's
+   details. This proves delivery on trial; remove the var
+   after upgrading, when custom bodies are allowed again.
 4. On CareBook, answer the login-time consent gate (it asks
    on first sign-in): save the same phone number and turn SMS
    on.

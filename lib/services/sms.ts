@@ -32,7 +32,10 @@
 //     like CareBook's is rejected as a disallowed parameter,
 //     which is exactly the 31 Oct live failure. Upgrading the
 //     Twilio account removes that limit; until then, no
-//     CareBook-detail text can be delivered on that trial.
+//     CareBook-detail text can be delivered on that trial —
+//     only a template body, via TWILIO_TRIAL_TEMPLATE (see
+//     twilioProvider), which delivers Twilio's generic
+//     template text and proves delivery without the details.
 //     The To number is normalized to E.164 at send time (see
 //     normalizePhoneE164) so a stored national-format number
 //     still sends. See docs/notifications.md for the setup
@@ -117,7 +120,15 @@ function loggedProvider(): SmsProvider {
  * POST the form-encoded message with Basic auth (SID:token).
  * Resolves to Twilio's message SID; throws with Twilio's own
  * error message on failure, so the outbox records the real
- * reason instead of a generic one.
+ * reason instead of a generic one. The To number is normalized
+ * to E.164 (see normalizePhoneE164). TWILIO_TRIAL_TEMPLATE,
+ * when set, replaces the custom body with a Twilio template
+ * name (e.g. sms_appointment_reminders): the 100-free-message
+ * trial rejects any other body as a disallowed parameter, so
+ * trial delivery is only possible with a template body — and
+ * the delivered text is then Twilio's generic template text,
+ * not CareBook's details. Leave the var unset on a full
+ * (upgraded) account, where custom bodies are allowed.
  */
 function twilioProvider(): SmsProvider {
   return {
@@ -125,6 +136,7 @@ function twilioProvider(): SmsProvider {
       const sid = process.env.TWILIO_ACCOUNT_SID!;
       const token = process.env.TWILIO_AUTH_TOKEN!;
       const from = process.env.TWILIO_FROM_NUMBER!;
+      const template = process.env.TWILIO_TRIAL_TEMPLATE?.trim();
       const res = await fetch(
         `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
         {
@@ -136,7 +148,7 @@ function twilioProvider(): SmsProvider {
           body: new URLSearchParams({
             To: normalizePhoneE164(message.to),
             From: from,
-            Body: message.text,
+            Body: template ? template : message.text,
           }),
         },
       );
