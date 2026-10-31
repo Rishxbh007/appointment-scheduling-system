@@ -23,25 +23,45 @@ function basicAuth(): string {
  * recorded failure reason says exactly what Razorpay said — a
  * bare description hid whether it was a 404, a 400, or a code
  * like BAD_REQUEST_ERROR, and that ambiguity is what made the
- * 30 Oct refund failures hard to diagnose. */
+ * 30 Oct refund failures hard to diagnose.
+ *
+ * The 404s seen on 31 Oct carried no description at all, which
+ * is anomalous — Razorpay's real errors always carry one. So
+ * when there is no description, the raw body (truncated) rides
+ * along instead of a bare status: that snippet is what
+ * identifies whether the 404 came from Razorpay or an
+ * intermediary. It never holds a secret (error pages only;
+ * auth travels in headers, never the body). */
 async function providerErrorMessage(res: Response): Promise<string> {
+  let text: string | null = null;
   try {
-    const data = (await res.json()) as {
-      error?: { description?: unknown; code?: unknown };
-    };
-    const description =
-      typeof data.error?.description === "string"
-        ? data.error.description
-        : null;
-    const code =
-      typeof data.error?.code === "string" ? data.error.code : null;
-    if (description) {
-      return `${description} (status ${res.status}${code ? `, code ${code}` : ""}).`;
-    }
+    text = await res.text();
   } catch {
-    // Fall through to the status message below.
+    text = null;
   }
-  return `Payment provider rejected the request (status ${res.status}).`;
+  if (text) {
+    try {
+      const data = JSON.parse(text) as {
+        error?: { description?: unknown; code?: unknown };
+      };
+      const description =
+        typeof data.error?.description === "string"
+          ? data.error.description
+          : null;
+      const code =
+        typeof data.error?.code === "string" ? data.error.code : null;
+      if (description) {
+        return `${description} (status ${res.status}${code ? `, code ${code}` : ""}).`;
+      }
+    } catch {
+      // Not JSON — fall through to the snippet below.
+    }
+  }
+  const snippet =
+    text && text.trim().length > 0
+      ? text.replace(/\s+/g, " ").slice(0, 300)
+      : "(empty body)";
+  return `Payment provider rejected the request (status ${res.status}). Response: ${snippet}`;
 }
 
 /** Both server keys present (test keys start with rzp_test_). */
