@@ -38,7 +38,8 @@ export type MailMessage = {
 };
 
 export type MailProvider = {
-  send(message: MailMessage): Promise<void>;
+  /** Sends one message; resolves to the provider's message id (if any). */
+  send(message: MailMessage): Promise<string | null>;
 };
 
 /** True when the Gmail SMTP credentials are present. */
@@ -48,7 +49,7 @@ export function isEmailConfigured(): boolean {
 
 function gmailProvider(): MailProvider {
   return {
-    async send(message: MailMessage): Promise<void> {
+    async send(message: MailMessage): Promise<string | null> {
       const transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST ?? "smtp.gmail.com",
         port: Number(process.env.SMTP_PORT ?? 587),
@@ -58,12 +59,13 @@ function gmailProvider(): MailProvider {
           pass: process.env.SMTP_PASS,
         },
       });
-      await transporter.sendMail({
+      const info = await transporter.sendMail({
         from: process.env.EMAIL_FROM ?? process.env.SMTP_USER,
         to: message.to,
         subject: message.subject,
         text: message.text,
       });
+      return typeof info?.messageId === "string" ? info.messageId : null;
     },
   };
 }
@@ -75,12 +77,13 @@ export function getProvider(): MailProvider | null {
 }
 
 /**
- * Send one message through the active provider. Throws when mail
- * is not configured or the provider fails, so callers record the
- * real outcome instead of assuming delivery.
+ * Send one message through the active provider. Resolves to the
+ * provider's message id (or null). Throws when mail is not
+ * configured or the provider fails, so callers record the real
+ * outcome instead of assuming delivery.
  */
-export async function sendMail(message: MailMessage): Promise<void> {
+export async function sendMail(message: MailMessage): Promise<string | null> {
   const provider = getProvider();
   if (!provider) throw new Error("email not configured");
-  await provider.send(message);
+  return provider.send(message);
 }

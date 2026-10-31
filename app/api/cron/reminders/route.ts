@@ -20,7 +20,10 @@
 // unpaid hold never lingers past its 15 minutes even if no
 // booking traffic arrives.
 
-import { processDueReminders } from "@/lib/services/notifications";
+import {
+  processDueReminders,
+  processOutboxRetries,
+} from "@/lib/services/notifications";
 import { sweepExpiredPendings } from "@/lib/services/payments";
 import { topUpDemoDoctorSlots } from "@/lib/services/demo-slots";
 import { ensureDb } from "@/lib/db";
@@ -51,6 +54,11 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   const reminders = await processDueReminders();
+  // Day 5: failed notification rows whose next attempt is due
+  // get retried here too (email + SMS, event + reminder rows),
+  // so a provider outage heals itself on the next run instead
+  // of leaving failed rows behind.
+  const outboxRetries = await processOutboxRetries();
   const swept = await sweepExpiredPendings();
 
   // Rolling demo availability (Part A item 3): top up DEMO
@@ -85,6 +93,12 @@ export async function GET(req: Request): Promise<Response> {
       skipped: reminders.skipped,
       failed: reminders.failed,
       cancelled: reminders.cancelled,
+    },
+    outboxRetries: {
+      claimed: outboxRetries.claimed,
+      sent: outboxRetries.sent,
+      failed: outboxRetries.failed,
+      cancelled: outboxRetries.cancelled,
     },
     expiredPendingsSwept: {
       appointments: swept.appointments,

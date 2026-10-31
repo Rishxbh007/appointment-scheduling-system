@@ -24,6 +24,8 @@ import { getDoctorProfile, formatDoctorName } from "@/lib/services/doctors";
 import { listFavoriteDoctors } from "@/lib/services/doctors";
 import { FavoriteToggle } from "@/components/favorite-toggle";
 import { RefundRetryButton } from "@/components/refund-retry-button";
+import { NotificationPreferencesForm } from "@/components/notification-preferences-form";
+import { getSmsOptIn } from "@/lib/services/notifications";
 import type { BookableSlot } from "@/components/booking-form";
 import { Badge } from "@/components/ui/badge";
 import { AppointmentTimeline } from "@/components/appointment-timeline";
@@ -187,6 +189,10 @@ export default async function DashboardPage() {
     const favorites = patientId
       ? await listFavoriteDoctors(patientId)
       : [];
+    // Day 5: the patient's SMS opt-in for the preferences card.
+    // A lookup failure is not an opt-out, but the card cannot
+    // show a state it does not know — so it falls back to off.
+    const smsOptIn = (await getSmsOptIn(session.userId)) ?? false;
     // Slots per doctor, for the reschedule picker on eligible
     // cards. The profile returns every upcoming slot with its
     // state; the picker itself offers bookable slots only. Only
@@ -618,6 +624,24 @@ export default async function DashboardPage() {
             ))}
           </div>
         )}
+
+        <h2 className="mt-12 flex items-center gap-2 text-2xl font-bold">
+          <span className="h-2.5 w-2.5 rounded-full bg-success-strong" />
+          Notification preferences
+        </h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Email notifications about your appointments are always on.
+          SMS is optional — turn it on to also get reminders and
+          updates by text message.
+        </p>
+        <Card className="mt-4">
+          <CardContent className="pt-6">
+            <NotificationPreferencesForm
+              initialPhone={user.phone ?? ""}
+              initialSmsOptIn={smsOptIn}
+            />
+          </CardContent>
+        </Card>
 
         <h2 className="mt-12 flex items-center gap-2 text-2xl font-bold">
           <span className="h-2.5 w-2.5 rounded-full bg-info-strong" />

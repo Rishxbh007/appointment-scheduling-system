@@ -262,11 +262,24 @@ export const refunds = pgTable("refunds", {
 // booking_cancelled, booking_rescheduled, payment_succeeded,
 // payment_failed, refund_initiated, refund_processed,
 // refund_failed, or reminder. scheduled_at is set only for
-// reminders (appointment start minus 24h); event mail has NULL
-// and is attempted at once. status is 'Pending' (reminder
-// waiting, or an event row mid-attempt), 'Sent', 'Failed'
-// (with failure_reason), or 'Cancelled' (reminder killed by a
-// cancel/complete, so it can never send).
+// reminders (appointment start minus the reminder interval);
+// event mail has NULL and is attempted at once. status is
+// 'Pending' (reminder waiting, or an event row mid-attempt),
+// 'Sent', 'Failed' (with failure_reason), or 'Cancelled'
+// (reminder killed by a cancel/complete, so it can never send).
+//
+// Day 5 extends this table into the real outbox: dedup_key makes
+// a repeat trigger a no-op (one row per event + appointment +
+// channel + recipient, and per scheduled instant for reminders),
+// provider_ref records the provider's own reference (Gmail
+// message id, or the SMS driver's log reference), attempts +
+// next_attempt_at drive the cron's retry of failed rows, and
+// recipient_phone + interval_hours carry what SMS rows and
+// multi-interval reminders need. recipient_email is nullable
+// now because an SMS row has a phone, not an email. The
+// notification_preferences table beside it is the patient's
+// opt-in: SMS is off by default and sends only to opted-in
+// patients with a phone number on file.
 export const notifications = pgTable("notifications", {
   notificationId: serial("notification_id").primaryKey(),
   appointmentId: integer("appointment_id").references(
@@ -275,15 +288,37 @@ export const notifications = pgTable("notifications", {
   ),
   channel: varchar("channel", { length: 20 }).notNull().default("email"),
   event: varchar("event", { length: 50 }).notNull(),
-  recipientEmail: varchar("recipient_email", { length: 255 }).notNull(),
+  recipientEmail: varchar("recipient_email", { length: 255 }),
+  recipientPhone: varchar("recipient_phone", { length: 20 }),
   subject: varchar("subject", { length: 255 }).notNull(),
   body: text("body").notNull(),
   status: varchar("status", { length: 20 }).notNull().default("Pending"),
   scheduledAt: timestamp("scheduled_at"),
   sentAt: timestamp("sent_at"),
   failureReason: text("failure_reason"),
+  dedupKey: varchar("dedup_key", { length: 255 }).unique(),
+  providerRef: varchar("provider_ref", { length: 255 }),
+  attempts: integer("attempts").notNull().default(0),
+  nextAttemptAt: timestamp("next_attempt_at"),
+  intervalHours: integer("interval_hours"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+// Day 5: one row per user. sms_opt_in is false by default — SMS
+// is opt-in, never on by accident. Operational email is always
+// on and is not gated by this table; there are no promotional
+// messages at all, so there is nothing else to opt out of.
+export const notificationPreferences = pgTable(
+  "notification_preferences",
+  {
+    userId: integer("user_id")
+      .primaryKey()
+      .references(() => users.userId, { onDelete: "cascade" }),
+    smsOptIn: boolean("sms_opt_in").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+);
 
 export type User = typeof users.$inferSelect;
 export type Patient = typeof patients.$inferSelect;
@@ -297,3 +332,5 @@ export type Payment = typeof payments.$inferSelect;
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type Refund = typeof refunds.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
+export type NotificationPreference =
+  typeof notificationPreferences.$inferSelect;

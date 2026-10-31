@@ -25,6 +25,7 @@ import {
   appointments,
   payments,
   notifications,
+  notificationPreferences,
 } from "@/lib/db/schema";
 import {
   toISODate,
@@ -34,7 +35,10 @@ import {
 } from "@/lib/time";
 import {
   buildReminderContent,
-  reminderScheduledAt,
+  buildSmsReminderContent,
+  dedupKeyFor,
+  getReminderIntervals,
+  reminderScheduledAtHours,
 } from "./notifications";
 import { formatDoctorName } from "@/lib/format";
 
@@ -225,17 +229,23 @@ export async function bookAppointment(
           status: "Pending",
         });
       }
-      // Day 4 Stage C: the reminder row, scheduled 24h before the
-      // slot starts. Created for every new booking — free or
-      // Pending hold alike. The cron only sends for
+      // Day 5: one reminder row per configured interval (default
+      // 24h), email always, SMS too when the patient opted in
+      // and has a phone on file. Created for every new booking —
+      // free or Pending hold alike. The cron only sends for
       // Booked/Confirmed appointments, so a hold's reminder waits
       // until the hold is paid, and the cancel/sweep paths kill
       // it if the booking dies first. A missing doctor/patient
       // row cannot happen (foreign keys), but if it did, the
-      // booking must still succeed — so a skipped reminder is
-      // logged, never thrown.
+      // booking must still succeed — so skipped reminders are
+      // logged, never thrown. Rows dedup on their key, so a
+      // retried booking transaction cannot double-schedule.
       const [patientUser] = await tx
-        .select({ email: users.email })
+        .select({
+          userId: patients.userId,
+          email: users.email,
+          phone: users.phone,
+        })
         .from(patients)
         .innerJoin(users, eq(patients.userId, users.userId))
         .where(eq(patients.patientId, patientId));
@@ -248,22 +258,77 @@ export async function bookAppointment(
         const slotDate = toISODate(slot.date);
         const slotStart = toHHMM(slot.startTime);
         const slotEnd = toHHMM(slot.endTime);
-        const content = buildReminderContent(
-          formatDoctorName(doctorUser.name),
-          slotDate,
-          slotStart,
-          slotEnd,
-        );
-        await tx.insert(notifications).values({
-          appointmentId: created.appointmentId,
-          channel: "email",
-          event: "reminder",
-          recipientEmail: patientUser.email,
-          subject: content.subject,
-          body: content.body,
-          status: "Pending",
-          scheduledAt: reminderScheduledAt(slotDate, slotStart),
-        });
+        const doctorDisplayName = formatDoctorName(doctorUser.name);
+        const [pref] = await tx
+          .select()
+          .from(notificationPreferences)
+          .where(eq(notificationPreferences.userId, patientUser.userId));
+        const smsOptIn = pref?.smsOptIn ?? false;
+        for (const hours of getReminderIntervals()) {
+          const scheduledAt = reminderScheduledAtHours(
+            slotDate,
+            slotStart,
+            hours,
+          );
+          const content = buildReminderContent(
+            doctorDisplayName,
+            slotDate,
+            slotStart,
+            slotEnd,
+            hours,
+          );
+          await tx
+            .insert(notifications)
+            .values({
+              appointmentId: created.appointmentId,
+              channel: "email",
+              event: "reminder",
+              recipientEmail: patientUser.email,
+              subject: content.subject,
+              body: content.body,
+              status: "Pending",
+              scheduledAt,
+              intervalHours: hours,
+              dedupKey: dedupKeyFor({
+                event: "reminder",
+                appointmentId: created.appointmentId,
+                channel: "email",
+                recipient: patientUser.email,
+                scheduledAt,
+              }),
+            })
+            .onConflictDoNothing({ target: notifications.dedupKey });
+          if (smsOptIn && patientUser.phone) {
+            const sms = buildSmsReminderContent(
+              doctorDisplayName,
+              slotDate,
+              slotStart,
+              slotEnd,
+            );
+            await tx
+              .insert(notifications)
+              .values({
+                appointmentId: created.appointmentId,
+                channel: "sms",
+                event: "reminder",
+                recipientEmail: null,
+                recipientPhone: patientUser.phone,
+                subject: sms.subject,
+                body: sms.body,
+                status: "Pending",
+                scheduledAt,
+                intervalHours: hours,
+                dedupKey: dedupKeyFor({
+                  event: "reminder",
+                  appointmentId: created.appointmentId,
+                  channel: "sms",
+                  recipient: patientUser.phone,
+                  scheduledAt,
+                }),
+              })
+              .onConflictDoNothing({ target: notifications.dedupKey });
+          }
+        }
       } else {
         console.error(
           `Reminder skipped for appointment ${created.appointmentId}: patient or doctor row missing.`,
@@ -436,12 +501,15 @@ export async function rescheduleAppointment(
       if (!updated) {
         throw new Error("This appointment can no longer be rescheduled.");
       }
-      // Day 4 Stage C: the reminder follows the move — new start
-      // minus 24h, only while still Pending (a sent reminder is
-      // history, and a cancelled one stays cancelled).
-      await tx
-        .update(notifications)
-        .set({ scheduledAt: reminderScheduledAt(date, startTime) })
+      // Day 5: every Pending reminder follows the move — new
+      // start minus its own interval, with its dedup key
+      // recomputed from the new instant. Only while still
+      // Pending (a sent reminder is history, and a cancelled
+      // one stays cancelled). Legacy rows without an interval
+      // fall back to the old 24-hour rule.
+      const pendingReminders = await tx
+        .select()
+        .from(notifications)
         .where(
           and(
             eq(notifications.appointmentId, appointmentId),
@@ -449,6 +517,36 @@ export async function rescheduleAppointment(
             eq(notifications.status, "Pending"),
           ),
         );
+      for (const r of pendingReminders) {
+        const hours = r.intervalHours ?? 24;
+        const newScheduledAt = reminderScheduledAtHours(
+          date,
+          startTime,
+          hours,
+        );
+        const recipient =
+          r.channel === "sms"
+            ? (r.recipientPhone ?? "")
+            : (r.recipientEmail ?? "");
+        await tx
+          .update(notifications)
+          .set({
+            scheduledAt: newScheduledAt,
+            dedupKey: dedupKeyFor({
+              event: "reminder",
+              appointmentId,
+              channel: r.channel,
+              recipient,
+              scheduledAt: newScheduledAt,
+            }),
+          })
+          .where(
+            and(
+              eq(notifications.notificationId, r.notificationId),
+              eq(notifications.status, "Pending"),
+            ),
+          );
+      }
       return updated;
     } catch (err) {
       // The partial unique index fired (race that slipped past the

@@ -172,6 +172,31 @@ const DDL = [
     failure_reason TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
   )`,
+  // Day 5: the notifications table becomes the outbox. Existing
+  // databases pick these columns up in place — every ADD is
+  // IF NOT EXISTS, and the old recipient_email NOT NULL is
+  // dropped so an SMS row (phone, no email) is valid. The
+  // unique index is what makes dedup real: a repeat trigger
+  // for the same event + appointment + channel + recipient
+  // collides and is ignored instead of sending twice.
+  `ALTER TABLE notifications
+     ADD COLUMN IF NOT EXISTS recipient_phone VARCHAR(20),
+     ADD COLUMN IF NOT EXISTS dedup_key VARCHAR(255),
+     ADD COLUMN IF NOT EXISTS provider_ref VARCHAR(255),
+     ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0,
+     ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMP,
+     ADD COLUMN IF NOT EXISTS interval_hours INTEGER`,
+  `ALTER TABLE notifications
+     ALTER COLUMN recipient_email DROP NOT NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS notifications_dedup_key_uidx
+     ON notifications (dedup_key)`,
+  // Day 5: the patient's SMS opt-in, one row per user.
+  `CREATE TABLE IF NOT EXISTS notification_preferences (
+    user_id INTEGER PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+    sms_opt_in BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+  )`,
   // Double-booking guard (database level): the same patient can hold
   // at most one ACTIVE appointment on the same slot. Cancelled or
   // completed appointments do not count, so re-booking after a
