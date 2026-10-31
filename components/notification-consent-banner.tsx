@@ -1,10 +1,12 @@
-// First-visit SMS consent banner (client component). Day 5
-// follow-up: the ask happens ONCE, at the top of the patient
-// dashboard, the first time the patient arrives — never buried
-// in settings, never nagging. It shows only while the patient
-// has no preferences row; either answer (Allow SMS or Email
-// only) records a row, so the banner never returns. The choice
-// can still be changed anytime on the notifications page.
+// SMS consent ask (client component). Day 5 follow-up: the ask
+// happens ONCE — now on the login-time consent gate
+// (/auth/consent), not on the dashboard. It shows only while
+// the patient has no preferences row; either answer (Allow SMS
+// or Email only) records a row, so the gate never returns. The
+// choice can still be changed anytime on the notifications
+// page. The dashboard redirects unanswered patients here, and
+// answering refreshes this page, which then sends them on to
+// the dashboard.
 
 "use client";
 

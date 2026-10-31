@@ -24,7 +24,6 @@ import { getDoctorProfile, formatDoctorName } from "@/lib/services/doctors";
 import { listFavoriteDoctors } from "@/lib/services/doctors";
 import { FavoriteToggle } from "@/components/favorite-toggle";
 import { RefundRetryButton } from "@/components/refund-retry-button";
-import { NotificationConsentBanner } from "@/components/notification-consent-banner";
 import { getNotificationPreferences } from "@/lib/services/notifications";
 import type { BookableSlot } from "@/components/booking-form";
 import { Badge } from "@/components/ui/badge";
@@ -144,6 +143,17 @@ export default async function DashboardPage() {
   const user = await getUserById(session.userId);
   if (!user) redirect("/login");
 
+  // Login-time consent gate: a patient who has never answered
+  // the SMS consent question is sent to /auth/consent before
+  // reaching the dashboard. The ask lives at login — not
+  // buried in the dashboard — it cannot be skipped, and it
+  // captures the mobile number SMS needs. Either answer
+  // records a row, so the gate never returns.
+  if (session.role === "Patient") {
+    const prefs = await getNotificationPreferences(session.userId);
+    if (prefs === null) redirect("/auth/consent");
+  }
+
   if (session.role === "Patient") {
     const patientId = await getPatientIdByUser(session.userId);
     const bookings = patientId ? await getPatientBookings(patientId) : [];
@@ -189,11 +199,6 @@ export default async function DashboardPage() {
     const favorites = patientId
       ? await listFavoriteDoctors(patientId)
       : [];
-    // Day 5 follow-up: the first-visit consent banner shows only
-    // while the patient has never set preferences — either
-    // answer records a row, so it never returns.
-    const hasNotificationPreferences =
-      (await getNotificationPreferences(session.userId)) !== null;
     // Slots per doctor, for the reschedule picker on eligible
     // cards. The profile returns every upcoming slot with its
     // state; the picker itself offers bookable slots only. Only
@@ -238,10 +243,6 @@ export default async function DashboardPage() {
             </Button>
           </Link>
         </div>
-
-        {!hasNotificationPreferences && (
-          <NotificationConsentBanner initialPhone={user.phone ?? ""} />
-        )}
 
         <h2 className="mt-12 flex items-center gap-2 text-2xl font-bold">
           <span className="h-2.5 w-2.5 rounded-full bg-brand-600" />

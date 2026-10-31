@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation";
 // underneath them. Exact matches only (usePathname strips query
 // strings, so /login?role=… still matches); /auth/choose-role is
 // deliberately NOT in this list.
-const HIDDEN_PATHS = ["/login", "/register", "/auth/start"];
+const HIDDEN_PATHS = ["/login", "/register", "/auth/start", "/auth/consent"];
 
 export function SiteFooter({ signedIn }: { signedIn: boolean }) {
   const pathname = usePathname();

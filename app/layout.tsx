@@ -57,7 +57,7 @@ export default async function RootLayout({
         />
         <main className="flex-1">{children}</main>
         {/* Site footer, hidden on the auth-flow pages (/login,
-          /register, /auth/start) so those pages end cleanly at their
+          /register, /auth/start, /auth/consent) so those pages end cleanly at their
           own background with no white strip underneath. */}
         <SiteFooter signedIn={!!session} />
       </body>

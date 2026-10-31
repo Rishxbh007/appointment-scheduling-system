@@ -19,7 +19,7 @@ are handled, and how to add a real SMS provider.
 | Preferences action + form | `lib/actions/notifications.ts`, `components/notification-preferences-form.tsx` |
 | Notifications page (history + preferences) | `app/dashboard/notifications/page.tsx` |
 | Header bell → notifications page | `components/site-header.tsx` |
-| First-visit consent banner | `components/notification-consent-banner.tsx` |
+| Login-time consent gate | `app/auth/consent/page.tsx`, `components/notification-consent-banner.tsx` |
 | Cron (due reminders + outbox retries + sweep) | `app/api/cron/reminders/route.ts` |
 | Tests | `lib/services/__tests__/day5-notifications.test.ts` (`npm test`) |
 
@@ -147,8 +147,9 @@ Free-trial checklist (no card to sign up, 100 free SMS, 30 days):
 3. Copy the Account SID + Auth Token + trial number into
    `.env.local` AND Vercel (same names), and set
    `SMS_PROVIDER=twilio`.
-4. On the dashboard, save the same phone number and turn SMS
-   on (the consent banner asks on first visit).
+4. On CareBook, answer the login-time consent gate (it asks
+   on first sign-in): save the same phone number and turn SMS
+   on.
 5. Make a test booking: the SMS rows on the notifications page
    will carry Twilio SIDs instead of `log-` references.
 
@@ -167,7 +168,7 @@ A `SMS_PROVIDER` value with no implementation returns null,
 and sending throws "SMS provider '<name>' is not configured"
 — a misconfigured env fails loudly, never fake-sends.
 
-## Notifications page + consent banner
+## Notifications page + login-time consent gate
 
 - **Bell, top-right of every page** (signed-in users): links
   to `/dashboard/notifications`. The pill nav keeps its three
@@ -178,13 +179,20 @@ and sending throws "SMS provider '<name>' is not configured"
   channel, status, subject, body, and time. Doctors see the
   rows addressed to them (email only) plus a note that SMS is
   patient-only. Nothing on the page is a demo entry.
-- **Consent banner**: on the patient's first dashboard visit
-  (no preferences row yet), a banner at the top asks "Can we
-  send you SMS updates?" with a phone field and Allow SMS /
-  Email only. Either answer records a row, so it never asks
-  again; the choice can still be changed on the notifications
-  page. The old preferences card at the bottom of the
-  dashboard is gone — it moved onto the notifications page.
+- **Login-time consent gate** (`/auth/consent`): the consent
+  ask lives at login, not buried in the dashboard — and it is
+  mandatory. Every sign-in lands on `/dashboard`, and the
+  dashboard sends a patient with no preferences row straight
+  back here, so the dashboard is unreachable until the
+  question is answered. The gate asks "Can we send you SMS
+  updates?" with a phone field and Allow SMS / Email only.
+  Either answer records a row, so it never asks again; the
+  choice can still be changed on the notifications page.
+  Doctors skip the gate (SMS is patient-only), and patients
+  who already answered skip it too. The phone field is the
+  point: SMS needs a target number, and Allow SMS without a
+  number is refused — a patient who wants texts must leave a
+  number behind.
 - **Honest labels**: a log-driver SMS row reads "Logged", not
   "Sent" — "Sent" is reserved for rows a real provider
   accepted. While SMS is in log-only mode the page also shows
@@ -195,8 +203,8 @@ and sending throws "SMS provider '<name>' is not configured"
 
 - SMS is **off by default**. The notifications page has the
   SMS preferences form: a phone-number field + an SMS opt-in
-  checkbox. The dashboard asks once, up front, via the consent
-  banner (see above).
+  checkbox. The login-time consent gate asks once, up front,
+  at `/auth/consent` (see above).
 - Turning SMS on requires a phone number (there is nothing to
   text otherwise). Turning it off cancels the patient's
   Pending SMS reminders at once.
