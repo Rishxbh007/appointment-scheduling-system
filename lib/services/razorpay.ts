@@ -120,8 +120,13 @@ export async function createRazorpayRefund(input: {
   razorpayPaymentId: string;
   amountPaise: number;
 }): Promise<string> {
+  // Create is SINGULAR /refund: Razorpay accepts POST only on
+  // /v1/payments/:id/refund. The plural /refunds accepts only
+  // GET (fetching refunds) — POSTing there returns 404
+  // {"message":"no Route matched with those values"}, which is
+  // exactly what every CareBook refund hit until this fix.
   const res = await fetch(
-    `${PAYMENTS_URL}/${input.razorpayPaymentId}/refunds`,
+    `${PAYMENTS_URL}/${input.razorpayPaymentId}/refund`,
     {
       method: "POST",
       headers: {
