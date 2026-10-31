@@ -25,8 +25,18 @@
 //     numbers verified on the account (up to 5; the sign-up
 //     number is auto-verified), texts are restricted to the
 //     sign-up country, and trial texts begin with "Sent from a
-//     Twilio trial account". See docs/notifications.md for the
-//     setup checklist.
+//     Twilio trial account". The 100-free-message trial goes
+//     further: its Messages API only accepts E.164 recipients
+//     AND a body that is one of Twilio's own templates
+//     (sms_appointment_reminders, sms_2fa, …) — a custom body
+//     like CareBook's is rejected as a disallowed parameter,
+//     which is exactly the 31 Oct live failure. Upgrading the
+//     Twilio account removes that limit; until then, no
+//     CareBook-detail text can be delivered on that trial.
+//     The To number is normalized to E.164 at send time (see
+//     normalizePhoneE164) so a stored national-format number
+//     still sends. See docs/notifications.md for the setup
+//     checklist.
 //   * anything else — not implemented, so getSmsProvider()
 //     returns null and sendSms() throws "SMS provider '<name>'
 //     is not configured". A misconfigured env fails loudly
@@ -69,6 +79,27 @@ function isTwilioConfigured(): boolean {
   );
 }
 
+/**
+ * Normalize a stored phone number to E.164 for Twilio, which
+ * rejects anything else (its To parameter must be + followed
+ * by country code and subscriber number, no spaces or
+ * punctuation). Indian 10-digit mobiles — this clinic's
+ * patients — get +91; a 12-digit number starting with 91 gets
+ * +; an existing + is kept with formatting stripped. Anything
+ * else passes through unchanged so Twilio's own error names
+ * the problem instead of a guess. Applied at SEND time, not
+ * at save time, so it also fixes cron retries of rows that
+ * were stored before this existed.
+ */
+export function normalizePhoneE164(phone: string): string {
+  const trimmed = phone.trim();
+  if (trimmed.startsWith("+")) return trimmed.replace(/[\s()\-]/g, "");
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 12 && digits.startsWith("91")) return `+${digits}`;
+  return trimmed;
+}
+
 function loggedProvider(): SmsProvider {
   return {
     async send(message: SmsMessage): Promise<string> {
@@ -103,7 +134,7 @@ function twilioProvider(): SmsProvider {
             "Content-Type": "application/x-www-form-urlencoded",
           },
           body: new URLSearchParams({
-            To: message.to,
+            To: normalizePhoneE164(message.to),
             From: from,
             Body: message.text,
           }),

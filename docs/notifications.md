@@ -193,11 +193,25 @@ and sending throws "SMS provider '<name>' is not configured"
   point: SMS needs a target number, and Allow SMS without a
   number is refused — a patient who wants texts must leave a
   number behind.
+- **Twilio trial limits (proven live 31 Oct):** the 100-free-
+  message trial's Messages API only accepts E.164 recipients
+  AND a body that is one of Twilio's own templates
+  (`sms_appointment_reminders`, `sms_2fa`, …). A custom body
+  like CareBook's is rejected as a disallowed parameter — the
+  31 Oct 04:23 pm failure. Upgrading the Twilio account
+  removes that limit; until then no CareBook-detail text can
+  be delivered on that trial. The To number is normalized to
+  E.164 at send time (`normalizePhoneE164` in
+  `lib/services/sms.ts`: Indian 10-digit → +91), so a stored
+  national-format number still sends, including on cron
+  retries of already-stored rows.
 - **Honest labels**: a log-driver SMS row reads "Logged", not
   "Sent" — "Sent" is reserved for rows a real provider
   accepted. While SMS is in log-only mode the page also shows
   a notice saying so, so a "Logged" row is never mistaken for
-  a delivered text.
+  a delivered text. A provider-rejected row reads "Failed"
+  with the provider's own reason, and stays retryable until
+  its attempts are exhausted — never relabelled as sent.
 
 ## Preferences
 
