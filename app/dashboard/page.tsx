@@ -167,6 +167,23 @@ export default async function DashboardPage() {
         );
       }
     }
+    // Refund per appointment, for the refund line on cancelled
+    // booking cards: booking cards used to say nothing about
+    // refunds at all, so a cancelled paid booking looked like
+    // its refund had vanished — the status only lived in the
+    // Payments & refunds section below.
+    const refundByAppointment = new Map<
+      number,
+      NonNullable<(typeof paymentHistory)[number]["refund"]>
+    >();
+    for (const entry of paymentHistory) {
+      if (
+        entry.refund &&
+        !refundByAppointment.has(entry.appointmentId)
+      ) {
+        refundByAppointment.set(entry.appointmentId, entry.refund);
+      }
+    }
     const favorites = patientId
       ? await listFavoriteDoctors(patientId)
       : [];
@@ -262,6 +279,49 @@ export default async function DashboardPage() {
                         Reason: {b.reason}
                       </p>
                     )}
+                    {b.status === "Cancelled" &&
+                      (() => {
+                        const refund = refundByAppointment.get(
+                          b.appointmentId,
+                        );
+                        if (!refund) {
+                          return paidAmountByAppointment.has(
+                            b.appointmentId,
+                          ) ? (
+                            <p className="mt-1 text-sm text-slate-600">
+                              Refund status not recorded — see
+                              Payments &amp; refunds below.
+                            </p>
+                          ) : (
+                            <p className="mt-1 text-sm text-slate-600">
+                              Nothing was paid for this booking, so
+                              there is no refund.
+                            </p>
+                          );
+                        }
+                        if (refund.status === "Processed") {
+                          return (
+                            <p className="mt-1 text-sm font-medium text-success-strong">
+                              Refund processed — the full amount has
+                              been refunded.
+                            </p>
+                          );
+                        }
+                        if (refund.status === "Initiated") {
+                          return (
+                            <p className="mt-1 text-sm font-medium text-warning-strong">
+                              Refund initiated — the full amount is
+                              being refunded.
+                            </p>
+                          );
+                        }
+                        return (
+                          <p className="mt-1 text-sm font-medium text-danger-strong">
+                            Refund failed — see Payments &amp; refunds
+                            below to retry.
+                          </p>
+                        );
+                      })()}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
