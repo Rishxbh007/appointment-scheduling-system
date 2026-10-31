@@ -13,7 +13,7 @@ are handled, and how to add a real SMS provider.
 | Patient SMS opt-in | `notification_preferences` in `lib/db/schema.ts` |
 | Event + reminder logic, dispatcher, retry | `lib/services/notifications.ts` |
 | Email provider (Gmail SMTP) | `lib/services/mailer.ts` |
-| SMS providers (logged driver + Twilio) | `lib/services/sms.ts` |
+| SMS providers (logged driver + Vonage) | `lib/services/sms.ts` |
 | Reminder creation (booking) + reschedule shift | `lib/services/booking.ts` |
 | Cancel/sweep reminder cleanup | `lib/services/booking.ts`, `lib/services/payments.ts` |
 | Preferences action + form | `lib/actions/notifications.ts`, `components/notification-preferences-form.tsx` |
@@ -131,40 +131,35 @@ pretends otherwise. The outbox row is still created and
 audited, and the log line is the delivery record. Rows with a
 `log-` reference are exactly the rows that were log-only.
 
-**Real SMS via Twilio (implemented, inactive until credentials exist).**
-`SMS_PROVIDER=twilio` selects the Twilio provider in
-`lib/services/sms.ts` (Messages API over HTTPS, no SDK). It
-needs three env vars — same names locally and in Vercel:
-`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`,
-`TWILIO_FROM_NUMBER` (the Twilio number). With any of them
+**Real SMS via Vonage (implemented, inactive until credentials exist).**
+`SMS_PROVIDER=vonage` selects the Vonage provider in
+`lib/services/sms.ts` (SMS API over HTTPS, no SDK). It
+needs three env vars: `VONAGE_API_KEY`, `VONAGE_API_SECRET`,
+`VONAGE_FROM_NUMBER` (an alphanumeric sender like
+`CareBook`, or a Vonage virtual number). With any of them
 missing, sending throws "not configured" instead of
 fake-sending.
 
-Free-trial checklist (no card to sign up, 100 free SMS, 30 days):
-1. Sign up at Twilio and verify your own phone number (the
-   sign-up number is auto-verified).
-2. Get a trial number from the console.
-3. Copy the Account SID + Auth Token + trial number into
-   `.env.local` AND Vercel (same names), and set
-   `SMS_PROVIDER=twilio`.
-3b. On the 100-free-message trial ONLY, also set
-   `TWILIO_TRIAL_TEMPLATE=sms_appointment_reminders` in
-   Vercel: that trial rejects custom message bodies, so the
-   provider sends the template name and Twilio delivers its
-   generic appointment-reminder text instead of CareBook's
-   details. This proves delivery on trial; remove the var
-   after upgrading, when custom bodies are allowed again.
-4. On CareBook, answer the login-time consent gate (it asks
-   on first sign-in): save the same phone number and turn SMS
-   on.
-5. Make a test booking: the SMS rows on the notifications page
-   will carry Twilio SIDs instead of `log-` references.
+Free-trial checklist (no card to sign up, about €2 credit):
+1. Sign up at Vonage and verify your own phone number (trial
+   sends only go to verified numbers — add yours under
+   test numbers in the dashboard).
+2. Copy the API key + secret from the dashboard, and set
+   `VONAGE_FROM_NUMBER` to `CareBook` (or a Vonage number),
+   into `.env.local` AND Vercel (same names), and set
+   `SMS_PROVIDER=vonage`.
+3. On CareBook, make sure the consent-gate answer has SMS
+   on with the same phone number.
+4. Make a test booking: the SMS rows on the notifications
+   page will carry Vonage message-ids instead of `log-`
+   references.
 
-Trial limits, honestly: texts can only go to numbers verified
-on the account (up to 5), texts are restricted to the sign-up
-country, trial texts begin with "Sent from a Twilio trial
-account", and the trial expires after 30 days. Upgrading
-removes all of these.
+Trial limits, honestly: Vonage's trial accepts a CUSTOM
+body, so CareBook's real details go
+out — but trial texts carry a demo tag, trial sends only go
+to verified numbers (anything else fails with status 29,
+"Non-Whitelisted Destination"), and the €2 credit is finite.
+Upgrading removes all of these.
 
 **Adding another provider (MSG91, …)** — same pattern: one new
 provider in `lib/services/sms.ts` with the same `{ send }`
@@ -200,18 +195,6 @@ and sending throws "SMS provider '<name>' is not configured"
   point: SMS needs a target number, and Allow SMS without a
   number is refused — a patient who wants texts must leave a
   number behind.
-- **Twilio trial limits (proven live 31 Oct):** the 100-free-
-  message trial's Messages API only accepts E.164 recipients
-  AND a body that is one of Twilio's own templates
-  (`sms_appointment_reminders`, `sms_2fa`, …). A custom body
-  like CareBook's is rejected as a disallowed parameter — the
-  31 Oct 04:23 pm failure. Upgrading the Twilio account
-  removes that limit; until then no CareBook-detail text can
-  be delivered on that trial. The To number is normalized to
-  E.164 at send time (`normalizePhoneE164` in
-  `lib/services/sms.ts`: Indian 10-digit → +91), so a stored
-  national-format number still sends, including on cron
-  retries of already-stored rows.
 - **Honest labels**: a log-driver SMS row reads "Logged", not
   "Sent" — "Sent" is reserved for rows a real provider
   accepted. While SMS is in log-only mode the page also shows

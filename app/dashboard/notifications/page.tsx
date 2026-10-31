@@ -94,7 +94,7 @@ export default async function NotificationsPage() {
                 SMS is in log-only mode right now: no SMS provider
                 is connected, so SMS entries below were recorded
                 but not delivered to any phone. Connect a provider
-                (for example a Twilio free trial) to send real
+                (for example a Vonage free trial) to send real
                 texts.
               </p>
             </CardContent>

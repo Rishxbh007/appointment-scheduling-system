@@ -1,12 +1,12 @@
-// SMS send-time phone normalization (Day 5 follow-up). Twilio
-// rejects any To that is not E.164, so a stored national-format
+// SMS send-time phone normalization (Day 5 follow-up). The
+// provider needs E.164 digits, so a stored national-format
 // number must be normalized before it reaches the provider —
 // at send time, so cron retries of already-stored rows benefit
 // too. Run with the rest of the suite: npm test.
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getSmsProvider, normalizePhoneE164 } from "../sms";
+import { getSmsProvider, isSmsConfigured, normalizePhoneE164 } from "../sms";
 
 test("normalizePhoneE164: Indian 10-digit mobile gets +91", () => {
   assert.equal(normalizePhoneE164("7416931585"), "+917416931585");
@@ -22,18 +22,19 @@ test("normalizePhoneE164: existing + is kept, formatting stripped", () => {
   assert.equal(normalizePhoneE164("+15551234567"), "+15551234567");
 });
 
-test("normalizePhoneE164: anything else passes through for Twilio to reject honestly", () => {
+test("normalizePhoneE164: anything else passes through for the provider to reject honestly", () => {
   assert.equal(normalizePhoneE164("123"), "123");
   assert.equal(normalizePhoneE164(""), "");
 });
 
-// The Twilio provider is tested with a stubbed fetch: no real
-// HTTP, no credentials. Env is saved and restored per test so
-// the suite stays hermetic.
+// The Vonage provider is tested the same way: stubbed fetch,
+// no real HTTP, no credentials. Env is saved and restored
+// per test so the suite stays hermetic.
 
-async function captureTwilioSend(
+async function captureVonageSend(
   env: Record<string, string | undefined>,
   message: { to: string; text: string },
+  stubResponse: unknown,
 ): Promise<{ params: URLSearchParams; ref: string }> {
   const savedEnv: Record<string, string | undefined> = {};
   for (const key of Object.keys(env)) {
@@ -47,7 +48,7 @@ async function captureTwilioSend(
     captured = String(
       (init as { body?: unknown } | undefined)?.body ?? "",
     );
-    return { ok: true, json: async () => ({ sid: "SM123" }) };
+    return { ok: true, json: async () => stubResponse };
   }) as typeof fetch;
   try {
     const provider = getSmsProvider();
@@ -63,28 +64,77 @@ async function captureTwilioSend(
   }
 }
 
-const TWILIO_ENV = {
-  SMS_PROVIDER: "twilio",
-  TWILIO_ACCOUNT_SID: "ACtest",
-  TWILIO_AUTH_TOKEN: "tokentest",
-  TWILIO_FROM_NUMBER: "+15551234567",
+const VONAGE_ENV = {
+  SMS_PROVIDER: "vonage",
+  VONAGE_API_KEY: "keytest",
+  VONAGE_API_SECRET: "secrettest",
+  VONAGE_FROM_NUMBER: "CareBook",
 };
 
-test("twilio provider: trial template var replaces the custom body", async () => {
-  const { params, ref } = await captureTwilioSend(
-    { ...TWILIO_ENV, TWILIO_TRIAL_TEMPLATE: "sms_appointment_reminders" },
-    { to: "7416931585", text: "CareBook: payment received" },
+test("vonage provider: custom body sent, To digits-only E.164, message-id returned", async () => {
+  const { params, ref } = await captureVonageSend(
+    VONAGE_ENV,
+    { to: "7416931585", text: "CareBook: appointment with Dr. Naman on 2 Nov, 10:00 AM" },
+    { messages: [{ status: "0", "message-id": "1700000012345678" }] },
   );
-  assert.equal(ref, "SM123");
-  assert.equal(params.get("To"), "+917416931585");
-  assert.equal(params.get("Body"), "sms_appointment_reminders");
+  assert.equal(ref, "1700000012345678");
+  assert.equal(params.get("to"), "917416931585");
+  assert.equal(params.get("from"), "CareBook");
+  assert.equal(
+    params.get("text"),
+    "CareBook: appointment with Dr. Naman on 2 Nov, 10:00 AM",
+  );
 });
 
-test("twilio provider: without the template var the custom body is sent", async () => {
-  const { params } = await captureTwilioSend(
-    { ...TWILIO_ENV, TWILIO_TRIAL_TEMPLATE: undefined },
-    { to: "7416931585", text: "CareBook: payment received" },
-  );
-  assert.equal(params.get("To"), "+917416931585");
-  assert.equal(params.get("Body"), "CareBook: payment received");
+test("vonage provider: non-zero status throws Vonage's own error text", async () => {
+  const savedEnv: Record<string, string | undefined> = {};
+  for (const key of Object.keys(VONAGE_ENV)) {
+    savedEnv[key] = process.env[key];
+    process.env[key] = VONAGE_ENV[key as keyof typeof VONAGE_ENV];
+  }
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => ({
+    ok: true,
+    json: async () => ({
+      messages: [{ status: "29", "error-text": "Non-Whitelisted Destination" }],
+    }),
+  })) as unknown as typeof fetch;
+  try {
+    const provider = getSmsProvider();
+    assert.ok(provider);
+    await assert.rejects(
+      provider.send({ to: "7416931585", text: "hello" }),
+      /Non-Whitelisted Destination \(status 29\)/,
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+    for (const key of Object.keys(VONAGE_ENV)) {
+      if (savedEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = savedEnv[key];
+    }
+  }
+});
+
+test("vonage provider: missing credentials mean no provider, never a fake send", () => {
+  const savedEnv: Record<string, string | undefined> = {};
+  const keys = [
+    "SMS_PROVIDER",
+    "VONAGE_API_KEY",
+    "VONAGE_API_SECRET",
+    "VONAGE_FROM_NUMBER",
+  ];
+  for (const key of keys) {
+    savedEnv[key] = process.env[key];
+    delete process.env[key];
+  }
+  process.env.SMS_PROVIDER = "vonage";
+  try {
+    assert.equal(getSmsProvider(), null);
+    assert.equal(isSmsConfigured(), false);
+  } finally {
+    for (const key of keys) {
+      if (savedEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = savedEnv[key];
+    }
+  }
 });
